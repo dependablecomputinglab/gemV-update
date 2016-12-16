@@ -47,6 +47,7 @@
 #include "arch/arm/utility.hh"
 #include "arch/arm/vtophys.hh"
 #include "sim/serialize.hh"
+#include "base/vulnerability/vul_main.hh"
 
 namespace ArmISA {
 
@@ -86,6 +87,9 @@ struct TlbEntry
         DomainReserved,
         DomainManager
     };
+
+    /** VUL_TLB History struct for page table entry */
+    History history;                                //VUL_TLB
 
     // Matching variables
     Addr pfn;

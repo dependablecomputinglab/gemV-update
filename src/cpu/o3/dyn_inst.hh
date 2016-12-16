@@ -89,6 +89,7 @@ class BaseO3DynInst : public BaseDynInst<Impl>
         MaxInstDestRegs = TheISA::MaxInstDestRegs       //< Max dest regs
     };
 
+
   public:
     /** BaseDynInst constructor given a binary instruction. */
     BaseO3DynInst(StaticInstPtr staticInst, StaticInstPtr macroop,
@@ -259,21 +260,65 @@ class BaseO3DynInst : public BaseDynInst<Impl>
 
     uint64_t readIntRegOperand(const StaticInst *si, int idx)
     {
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnRead(ST_REGFILE, RF_REGISTER, this->_srcRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
+        
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            return this->cpu->readIntReg(this->_srcRegIdxIQ[idx]);
+        else if(this->accessor == this->LS_Q)
+            return this->cpu->readIntReg(this->_srcRegIdxLSQ[idx]);
+
         return this->cpu->readIntReg(this->_srcRegIdx[idx]);
     }
 
     FloatReg readFloatRegOperand(const StaticInst *si, int idx)
     {
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnRead(ST_REGFILE, RF_REGISTER, this->_srcRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
+        
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            return this->cpu->readFloatReg(this->_srcRegIdxIQ[idx]);
+        else if(this->accessor == this->LS_Q)
+            return this->cpu->readFloatReg(this->_srcRegIdxLSQ[idx]);
+
         return this->cpu->readFloatReg(this->_srcRegIdx[idx]);
     }
 
     FloatRegBits readFloatRegOperandBits(const StaticInst *si, int idx)
     {
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnRead(ST_REGFILE, RF_REGISTER, this->_srcRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
+        
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            return this->cpu->readFloatRegBits(this->_srcRegIdxIQ[idx]);
+        else if(this->accessor == this->LS_Q)
+            return this->cpu->readFloatRegBits(this->_srcRegIdxLSQ[idx]);
+
         return this->cpu->readFloatRegBits(this->_srcRegIdx[idx]);
     }
 
     uint64_t readCCRegOperand(const StaticInst *si, int idx)
     {
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnRead(ST_REGFILE, RF_REGISTER, this->_srcRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
+        
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            return this->cpu->readCCReg(this->_srcRegIdxIQ[idx]);
+        else if(this->accessor == this->LS_Q)
+            return this->cpu->readCCReg(this->_srcRegIdxLSQ[idx]);
+
         return this->cpu->readCCReg(this->_srcRegIdx[idx]);
     }
 
@@ -282,26 +327,74 @@ class BaseO3DynInst : public BaseDynInst<Impl>
      */
     void setIntRegOperand(const StaticInst *si, int idx, uint64_t val)
     {
-        this->cpu->setIntReg(this->_destRegIdx[idx], val);
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
+
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            this->cpu->setIntReg(this->_destRegIdxIQ[idx], val);
+        else if(this->accessor == this->LS_Q)
+            this->cpu->setIntReg(this->_destRegIdxLSQ[idx], val);
+        else
+            this->cpu->setIntReg(this->_destRegIdx[idx], val);
+
         BaseDynInst<Impl>::setIntRegOperand(si, idx, val);
     }
 
     void setFloatRegOperand(const StaticInst *si, int idx, FloatReg val)
     {
-        this->cpu->setFloatReg(this->_destRegIdx[idx], val);
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
+
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            this->cpu->setFloatReg(this->_destRegIdxIQ[idx], val);
+        else if(this->accessor == this->LS_Q)
+            this->cpu->setFloatReg(this->_destRegIdxLSQ[idx], val);
+        else
+            this->cpu->setFloatReg(this->_destRegIdx[idx], val);
+
         BaseDynInst<Impl>::setFloatRegOperand(si, idx, val);
     }
 
     void setFloatRegOperandBits(const StaticInst *si, int idx,
                                 FloatRegBits val)
     {
-        this->cpu->setFloatRegBits(this->_destRegIdx[idx], val);
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
+
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            this->cpu->setFloatRegBits(this->_destRegIdxIQ[idx], val);
+        else if(this->accessor == this->LS_Q)
+            this->cpu->setFloatRegBits(this->_destRegIdxLSQ[idx], val);
+        else
+            this->cpu->setFloatRegBits(this->_destRegIdx[idx], val);
+
         BaseDynInst<Impl>::setFloatRegOperandBits(si, idx, val);
     }
 
     void setCCRegOperand(const StaticInst *si, int idx, uint64_t val)
     {
-        this->cpu->setCCReg(this->_destRegIdx[idx], val);
+        //VUL_TRACKER REGISTER_FILE
+        //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
+        if(this->cpu->rfVulEnable)
+            this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
+
+        //VUL_TRACKER
+        if(this->accessor == this->INST_Q)
+            this->cpu->setCCReg(this->_destRegIdxIQ[idx], val);
+        else if(this->accessor == this->LS_Q)
+            this->cpu->setCCReg(this->_destRegIdxLSQ[idx], val);
+        else
+            this->cpu->setCCReg(this->_destRegIdx[idx], val);
+
         BaseDynInst<Impl>::setCCRegOperand(si, idx, val);
     }
 

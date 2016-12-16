@@ -70,3 +70,5 @@ class BaseCache(MemObject):
     addr_ranges = VectorParam.AddrRange([AllMemory], "The address range for the CPU-side port")
     system = Param.System(Parent.any, "System we belong to")
     tags = Param.BaseTags(LRU(), "Tag Store for LRU caches")
+    vul_analysis = Param.Unsigned(0, "Vulnerability analysis enabled/disabled")
+    protection_policy = Param.Unsigned(4, "Cache protection policy")

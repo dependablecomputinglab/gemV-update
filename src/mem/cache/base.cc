@@ -79,7 +79,10 @@ BaseCache::BaseCache(const Params *p)
       noTargetMSHR(NULL),
       missCount(p->max_miss_count),
       addrRanges(p->addr_ranges.begin(), p->addr_ranges.end()),
-      system(p->system)
+      system(p->system),
+      vulCalc(p->system->cacheLineSize(), p->protection_policy),
+      enableVulAnal(p->vul_analysis),
+      protectionMode(p->protection_policy)
 {
 }
 
@@ -747,6 +750,21 @@ BaseCache::regStats()
     mshr_no_allocate_misses
         .name(name() +".no_allocate_misses")
         .desc("Number of misses that were no-allocate")
+        ;
+
+    cacheVul
+        .name(name() + ".vulnerability")
+        .desc("Cache vulnerability in bit-ticks")
+        ;
+
+    mshrVul
+        .name(name() + ".mshr.vulnerability")
+        .desc("MSHR Vulnerability in bit-ticks")
+        ;
+
+    wbVul
+        .name(name() + ".wb.vulnerability")
+        .desc("Write Buffer vulnerability")
         ;
 
 }

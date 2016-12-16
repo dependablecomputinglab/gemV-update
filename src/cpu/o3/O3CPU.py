@@ -143,6 +143,16 @@ class DerivO3CPU(BaseCPU):
                                        "Branch Predictor")
     needsTSO = Param.Bool(buildEnv['TARGET_ISA'] == 'x86',
                           "Enable TSO Memory model")
+    #VUL
+    vul_analysis = Param.Unsigned(1, "Enable/disable vulnerability analysis")
+    fi_reg = Param.Unsigned(1, "Register number for fault injection")
+    rob_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    rf_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    cache_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    iq_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    lsq_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    pipeline_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
+    rename_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
 
     def addCheckerCpu(self):
         if buildEnv['TARGET_ISA'] in ['arm']:

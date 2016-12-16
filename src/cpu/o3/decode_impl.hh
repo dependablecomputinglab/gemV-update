@@ -54,6 +54,13 @@
 #include "params/DerivO3CPU.hh"
 #include "sim/full_system.hh"
 
+#include "base/vulnerability/vul_tracker.hh"            //VUL_PIPELINE
+
+//#include "debug/vulRTL.hh"                              //VUL_PIPELINE
+//#include "base/vulnerability/vulnerabilityParams.hh"    //VUL_PIPELINE
+
+//using namespace vulContext;                             //VUL_PIPELINE
+
 // clang complains about std::set being overloaded with Packet::set if
 // we open up the entire namespace std
 using std::list;
@@ -461,8 +468,19 @@ void
 DefaultDecode<Impl>::sortInsts()
 {
     int insts_from_fetch = fromFetch->size;
+
     for (int i = 0; i < insts_from_fetch; ++i) {
         insts[fromFetch->insts[i]->threadNumber].push(fromFetch->insts[i]);
+
+        //VUL_TRACKER Reading from Fetch Queue
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_OPCODE, fromFetch->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_PC, fromFetch->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_SEQNUM, fromFetch->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_FLAGS, fromFetch->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_ARCHSRCREGSIDX, fromFetch->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_FETCHQ, INST_ARCHDESTREGSIDX, fromFetch->insts[i]->seqNum);
+        }
     }
 }
 
@@ -677,6 +695,11 @@ DefaultDecode<Impl>::decodeInsts(ThreadID tid)
 
     DPRINTF(Decode, "[tid:%u]: Sending instruction to rename.\n",tid);
 
+    //VUL_PIPELINE
+    //vulParams vtemp = {0,false,false,0,0,0};
+    //vulParams *vp = &vtemp;
+    //VUL_PIPELINE
+
     while (insts_available > 0 && toRenameIndex < decodeWidth) {
         assert(!insts_to_decode.empty());
 
@@ -716,6 +739,16 @@ DefaultDecode<Impl>::decodeInsts(ThreadID tid)
         ++toRenameIndex;
         ++decodeDecodedInsts;
         --insts_available;
+
+        //VUL_TRACKER Writing to decode Queue
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_OPCODE, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_PC, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_SEQNUM, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_FLAGS, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_ARCHSRCREGSIDX, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_DECODEQ, INST_ARCHDESTREGSIDX, inst->seqNum);
+        }
 
 #if TRACING_ON
         if (DTRACE(O3PipeView)) {

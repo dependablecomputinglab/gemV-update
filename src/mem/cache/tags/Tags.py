@@ -52,6 +52,7 @@ class BaseTags(ClockedObject):
     # Get the hit latency from the parent (cache)
     hit_latency = Param.Cycles(Parent.hit_latency,
                                "The hit latency for this cache")
+    vul_analysis = Param.Unsigned(Parent.vul_analysis, "Enable/disable vulnerability analysis")
 
 class LRU(BaseTags):
     type = 'LRU'

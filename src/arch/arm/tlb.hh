@@ -54,12 +54,15 @@
 #include "params/ArmTLB.hh"
 #include "sim/fault_fwd.hh"
 #include "sim/tlb.hh"
+#include "base/vulnerability/vul_tlb.hh"                        //VUL_TLB
 
 class ThreadContext;
 
 namespace ArmISA {
 
 class TableWalker;
+
+class TlbVulCalc;                                               //VUL_TLB
 
 class TLB : public BaseTLB
 {
@@ -82,6 +85,10 @@ class TLB : public BaseTLB
         // purpose.
         MustBeOne = 0x80
     };
+
+    friend class TlbVulCalc;
+
+    TlbVulCalc *vulCalc;                                             //VUL_TLB
   protected:
 
     TlbEntry *table;    // the Page Table
@@ -108,6 +115,7 @@ class TLB : public BaseTLB
     mutable Stats::Scalar prefetchFaults;
     mutable Stats::Scalar domainFaults;
     mutable Stats::Scalar permsFaults;
+    mutable Stats::Scalar tlbVulnerability;                                 //VUL_TLB
 
     Stats::Formula readAccesses;
     Stats::Formula writeAccesses;
@@ -259,6 +267,7 @@ public:
         return dynamic_cast<const Params *>(_params);
     }
     inline void invalidateMiscReg() { miscRegValid = false; }
+
 };
 
 } // namespace ArmISA

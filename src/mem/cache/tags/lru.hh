@@ -75,7 +75,6 @@ class LRU : public BaseTags
     /** Typedef the set type used in this tag store. */
     typedef CacheSet<CacheBlk> SetType;
 
-
   protected:
     /** The associativity of the cache. */
     const unsigned assoc;

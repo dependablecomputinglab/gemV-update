@@ -58,6 +58,9 @@
 #include "mem/request.hh"
 #include "sim/faults.hh"
 
+//#include "debug/vulRTL.hh"              //VUL_PIPELINE
+//#include "base/vulnerability/vulnerabilityParams.hh"        //VUL_PIPELINE
+
 template <class Impl>
 BaseDynInst<Impl>::BaseDynInst(StaticInstPtr _staticInst,
                                StaticInstPtr _macroop,
@@ -66,8 +69,16 @@ BaseDynInst<Impl>::BaseDynInst(StaticInstPtr _staticInst,
   : staticInst(_staticInst), cpu(cpu), traceData(NULL), macroop(_macroop)
 {
     seqNum = seq_num;
+    seqNumROB = seq_num;
+    seqNumIQ = seq_num;
+    seqNumLSQ = seq_num;
+    seqNumIEWQ = seq_num;
 
     pc = _pc;
+
+    //VUL_TRACKER
+    pcROB = _pc;
+
     predPC = _predPC;
 
     initVars();
@@ -130,6 +141,10 @@ BaseDynInst<Impl>::initVars()
 #endif
 
     reqToVerify = NULL;
+
+    //VUL_TRACKER
+    vulT.initVars(numDestRegs(),numSrcRegs(),sizeof(pcState()),
+                            cpu->totalNumRegs, this->seqNum);
 }
 
 template <class Impl>

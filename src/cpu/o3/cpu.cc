@@ -66,6 +66,8 @@
 #include "sim/stat_control.hh"
 #include "sim/system.hh"
 
+#include "debug/VulTracker.hh"      //VUL_TRACKER
+
 #if THE_ISA == ALPHA_ISA
 #include "arch/alpha/osfpal.hh"
 #include "debug/Activity.hh"
@@ -253,7 +255,18 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
       globalSeqNum(1),
       system(params->system),
       drainManager(NULL),
-      lastRunningCycle(curCycle())
+      lastRunningCycle(curCycle()),
+      regVulCalc(regFile.totalNumPhysRegs(), params->fi_reg),           //VUL_RF
+      renameVulT(TheISA::NumIntRegs + TheISA::NumFloatRegs + TheISA::NumFloatRegs, numThreads),                   //VUL_TRACKER
+      enableVulAnalysis(params->vul_analysis),                                //VUL_TRACKER
+      robVulEnable(params->rob_vul_enable),                                   //VUL_TRACKER
+      rfVulEnable(params->rf_vul_enable),                                   //VUL_TRACKER
+      cacheVulEnable(params->cache_vul_enable),                                   //VUL_TRACKER
+      iqVulEnable(params->iq_vul_enable),                                   //VUL_TRACKER
+      lsqVulEnable(params->lsq_vul_enable),                                   //VUL_TRACKER
+      pipeVulEnable(params->pipeline_vul_enable),                                   //VUL_TRACKER
+      renameVulEnable(params->rename_vul_enable),                                   //VUL_TRACKER
+      totalNumRegs(regFile.totalNumPhysRegs())                                //VUL_TRACKER
 {
     if (!params->switched_out) {
         _status = Running;
@@ -349,6 +362,7 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
 
         activateThreadEvent[tid].init(tid, this);
         deallocateContextEvent[tid].init(tid, this);
+
     }
 
     // Initialize rename map to assign physical registers to the
@@ -359,18 +373,34 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
             // want special treatment for the zero register at this point
             PhysRegIndex phys_reg = freeList.getIntReg();
             renameMap[tid].setIntEntry(ridx, phys_reg);
+
+            //VUL_TRACKER Write to Rename map
+            if(this->renameVulEnable)
+                this->renameVulT.vulOnWrite(ridx, 0, tid);
+
             commitRenameMap[tid].setIntEntry(ridx, phys_reg);
         }
 
         for (RegIndex ridx = 0; ridx < TheISA::NumFloatRegs; ++ridx) {
             PhysRegIndex phys_reg = freeList.getFloatReg();
             renameMap[tid].setFloatEntry(ridx, phys_reg);
+
+            //VUL_TRACKER Write to Rename map
+            if(this->renameVulEnable)
+                this->renameVulT.vulOnWrite((int)(ridx + TheISA::NumIntRegs), 0, tid);
+
             commitRenameMap[tid].setFloatEntry(ridx, phys_reg);
         }
 
         for (RegIndex ridx = 0; ridx < TheISA::NumCCRegs; ++ridx) {
             PhysRegIndex phys_reg = freeList.getCCReg();
             renameMap[tid].setCCEntry(ridx, phys_reg);
+
+            //VUL_TRACKER Write to Rename map
+            if(this->renameVulEnable)
+                this->renameVulT.vulOnWrite((int)(ridx + TheISA::NumIntRegs + TheISA::NumFloatRegs), 0, tid);
+
+
             commitRenameMap[tid].setCCEntry(ridx, phys_reg);
         }
     }
@@ -464,6 +494,7 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
 template <class Impl>
 FullO3CPU<Impl>::~FullO3CPU()
 {
+
 }
 
 template <class Impl>
@@ -471,6 +502,11 @@ void
 FullO3CPU<Impl>::regStats()
 {
     BaseO3CPU::regStats();
+
+    // VUL_TRACKER REGISTER_FILE
+    regVulCalc.regStats();
+    pipeVulT.regStats();
+    renameVulT.regStats();
 
     // Register any of the O3CPU's stats here.
     timesIdled
@@ -540,6 +576,9 @@ FullO3CPU<Impl>::regStats()
     this->commit.regStats();
     this->rob.regStats();
 
+    //VUL_PIPELINE
+    //this->vulContainer->regStats();
+
     intRegfileReads
         .name(name() + ".int_regfile_reads")
         .desc("number of integer regfile reads")
@@ -579,6 +618,15 @@ FullO3CPU<Impl>::regStats()
         .name(name() + ".misc_regfile_writes")
         .desc("number of misc regfile writes")
         .prereq(miscRegfileWrites);
+/*
+    commitRenameMapVul
+        .name(name() + ".commit_rename_map.vulnerability")
+        .desc("Vulnerability of the commit rename map in bit-ticks")
+        .precision(0);
+    for(unsigned i = 0; i < numThreads; ++i)
+        commitRenameMapVul += commitRenameMap[i].renameMapVul;
+    */
+
 }
 
 template <class Impl>
@@ -854,6 +902,7 @@ FullO3CPU<Impl>::insertThread(ThreadID tid)
         PhysRegIndex phys_reg = freeList.getIntReg();
 
         renameMap[tid].setEntry(ireg,phys_reg);
+
         scoreboard.setReg(phys_reg);
     }
 
@@ -863,6 +912,7 @@ FullO3CPU<Impl>::insertThread(ThreadID tid)
         PhysRegIndex phys_reg = freeList.getFloatReg();
 
         renameMap[tid].setEntry(freg,phys_reg);
+
         scoreboard.setReg(phys_reg);
     }
 
@@ -873,6 +923,7 @@ FullO3CPU<Impl>::insertThread(ThreadID tid)
         PhysRegIndex phys_reg = freeList.getCCReg();
 
         renameMap[tid].setEntry(creg,phys_reg);
+
         scoreboard.setReg(phys_reg);
     }
 
@@ -910,6 +961,10 @@ FullO3CPU<Impl>::removeThread(ThreadID tid)
     for (int ireg = 0; ireg < TheISA::NumIntRegs; ireg++) {
         PhysRegIndex phys_reg = renameMap[tid].lookup(ireg);
 
+        //VUL_TRACKER Write to Rename map
+        if(this->renameVulEnable)
+            this->renameVulT.vulOnRead(ireg, 0, tid);
+        
         scoreboard.unsetReg(phys_reg);
         freeList.addReg(phys_reg);
     }
@@ -918,6 +973,10 @@ FullO3CPU<Impl>::removeThread(ThreadID tid)
     int max_reg = TheISA::NumIntRegs + TheISA::NumFloatRegs;
     for (int freg = TheISA::NumIntRegs; freg < max_reg; freg++) {
         PhysRegIndex phys_reg = renameMap[tid].lookup(freg);
+
+        //VUL_TRACKER Write to Rename map
+        if(this->renameVulEnable)
+            this->renameVulT.vulOnRead(freg, 0, tid);
 
         scoreboard.unsetReg(phys_reg);
         freeList.addReg(phys_reg);
@@ -928,6 +987,10 @@ FullO3CPU<Impl>::removeThread(ThreadID tid)
     for (int creg = TheISA::NumIntRegs + TheISA::NumFloatRegs;
          creg < max_reg; creg++) {
         PhysRegIndex phys_reg = renameMap[tid].lookup(creg);
+
+        //VUL_TRACKER Write to Rename map
+        if(this->renameVulEnable)
+            this->renameVulT.vulOnRead(creg, 0, tid);
 
         scoreboard.unsetReg(phys_reg);
         freeList.addReg(phys_reg);
@@ -1390,6 +1453,8 @@ uint64_t
 FullO3CPU<Impl>::readIntReg(int reg_idx)
 {
     intRegfileReads++;
+    //if(enableVulAnalysis)
+    //    regFileVul += regVulCalc.vulOnRead(reg_idx, true);              //VUL_RF
     return regFile.readIntReg(reg_idx);
 }
 
@@ -1398,6 +1463,8 @@ FloatReg
 FullO3CPU<Impl>::readFloatReg(int reg_idx)
 {
     fpRegfileReads++;
+    //if(enableVulAnalysis)
+    //    regFileVul += regVulCalc.vulOnRead(reg_idx, false);              //VUL_RF
     return regFile.readFloatReg(reg_idx);
 }
 
@@ -1406,6 +1473,8 @@ FloatRegBits
 FullO3CPU<Impl>::readFloatRegBits(int reg_idx)
 {
     fpRegfileReads++;
+    //if(enableVulAnalysis)
+    //    regFileVul += regVulCalc.vulOnRead(reg_idx, false);              //VUL_RF
     return regFile.readFloatRegBits(reg_idx);
 }
 
@@ -1414,6 +1483,8 @@ CCReg
 FullO3CPU<Impl>::readCCReg(int reg_idx)
 {
     ccRegfileReads++;
+    //if(enableVulAnalysis)
+    //    regFileVul += regVulCalc.vulOnRead(reg_idx, true);              //VUL_RF
     return regFile.readCCReg(reg_idx);
 }
 
@@ -1422,6 +1493,8 @@ void
 FullO3CPU<Impl>::setIntReg(int reg_idx, uint64_t val)
 {
     intRegfileWrites++;
+    //if(enableVulAnalysis)
+    //    regVulCalc.vulOnWrite(reg_idx, true);              //VUL_RF
     regFile.setIntReg(reg_idx, val);
 }
 
@@ -1430,6 +1503,8 @@ void
 FullO3CPU<Impl>::setFloatReg(int reg_idx, FloatReg val)
 {
     fpRegfileWrites++;
+    //if(enableVulAnalysis)
+    //    regVulCalc.vulOnWrite(reg_idx, false);              //VUL_RF
     regFile.setFloatReg(reg_idx, val);
 }
 
@@ -1438,6 +1513,8 @@ void
 FullO3CPU<Impl>::setFloatRegBits(int reg_idx, FloatRegBits val)
 {
     fpRegfileWrites++;
+    //if(enableVulAnalysis)
+    //    regVulCalc.vulOnWrite(reg_idx, false);              //VUL_RF
     regFile.setFloatRegBits(reg_idx, val);
 }
 
@@ -1446,6 +1523,8 @@ void
 FullO3CPU<Impl>::setCCReg(int reg_idx, CCReg val)
 {
     ccRegfileWrites++;
+    //if(enableVulAnalysis)
+    //    regVulCalc.vulOnWrite(reg_idx, true);              //VUL_RF
     regFile.setCCReg(reg_idx, val);
 }
 
@@ -1455,6 +1534,10 @@ FullO3CPU<Impl>::readArchIntReg(int reg_idx, ThreadID tid)
 {
     intRegfileReads++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupInt(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnRead(phys_reg, 0);
 
     return regFile.readIntReg(phys_reg);
 }
@@ -1465,6 +1548,10 @@ FullO3CPU<Impl>::readArchFloatReg(int reg_idx, ThreadID tid)
 {
     fpRegfileReads++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupFloat(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnRead(phys_reg, 0);
 
     return regFile.readFloatReg(phys_reg);
 }
@@ -1475,6 +1562,10 @@ FullO3CPU<Impl>::readArchFloatRegInt(int reg_idx, ThreadID tid)
 {
     fpRegfileReads++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupFloat(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnRead(phys_reg, 0);
 
     return regFile.readFloatRegBits(phys_reg);
 }
@@ -1486,6 +1577,10 @@ FullO3CPU<Impl>::readArchCCReg(int reg_idx, ThreadID tid)
     ccRegfileReads++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupCC(reg_idx);
 
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnRead(phys_reg, 0);
+
     return regFile.readCCReg(phys_reg);
 }
 
@@ -1496,6 +1591,10 @@ FullO3CPU<Impl>::setArchIntReg(int reg_idx, uint64_t val, ThreadID tid)
     intRegfileWrites++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupInt(reg_idx);
 
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnWrite(phys_reg, 0);
+
     regFile.setIntReg(phys_reg, val);
 }
 
@@ -1505,6 +1604,10 @@ FullO3CPU<Impl>::setArchFloatReg(int reg_idx, float val, ThreadID tid)
 {
     fpRegfileWrites++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupFloat(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnWrite(phys_reg, 0);
 
     regFile.setFloatReg(phys_reg, val);
 }
@@ -1515,6 +1618,10 @@ FullO3CPU<Impl>::setArchFloatRegInt(int reg_idx, uint64_t val, ThreadID tid)
 {
     fpRegfileWrites++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupFloat(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnWrite(phys_reg, 0);
 
     regFile.setFloatRegBits(phys_reg, val);
 }
@@ -1525,6 +1632,10 @@ FullO3CPU<Impl>::setArchCCReg(int reg_idx, CCReg val, ThreadID tid)
 {
     ccRegfileWrites++;
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupCC(reg_idx);
+    
+    //VUL_TRACKER
+    if(rfVulEnable)
+        this->regVulCalc.vulOnWrite(phys_reg, 0);
 
     regFile.setCCReg(phys_reg, val);
 }
@@ -1721,6 +1832,56 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
                 (*removeList.front())->threadNumber,
                 (*removeList.front())->seqNum,
                 (*removeList.front())->pcState());
+        
+        //VUL_TRACKER
+        if((*removeList.front())->isSquashed() || !(*removeList.front())->isCommitted()) {
+            if(rfVulEnable)
+                regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
+            if(renameVulEnable)
+                renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
+                                    (*removeList.front())->threadNumber);
+
+
+        } else if((*removeList.front())->isCommitted()) {
+
+                if((*removeList.front())->isSquashed()) {
+                    if(pipeVulEnable) {
+                        pipeVulT.vulOnSquash(P_FETCHQ, (*removeList.front())->seqNum);
+                        pipeVulT.vulOnSquash(P_DECODEQ, (*removeList.front())->seqNum);
+                        pipeVulT.vulOnSquash(P_RENAMEQ, (*removeList.front())->seqNum);
+                        pipeVulT.vulOnSquash(P_I2EQ, (*removeList.front())->seqNum);
+                        pipeVulT.vulOnSquash(P_IEWQ, (*removeList.front())->seqNum);
+                    } 
+                    if(rfVulEnable)
+                        regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
+                    if(renameVulEnable)
+                        renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
+                                    (*removeList.front())->threadNumber);
+                    if(iqVulEnable)
+                        pipeVulT.vulOnSquash(P_IQ, (*removeList.front())->seqNum);
+                    if(lsqVulEnable)
+                        pipeVulT.vulOnSquash(P_LSQ, (*removeList.front())->seqNum);
+                    
+                } else {
+
+                    if(pipeVulEnable) {
+                        pipeVulT.vulOnCommit(P_FETCHQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                        pipeVulT.vulOnCommit(P_DECODEQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                        pipeVulT.vulOnCommit(P_RENAMEQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                        pipeVulT.vulOnCommit(P_I2EQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                        pipeVulT.vulOnCommit(P_IEWQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                    } 
+                    if(renameVulEnable) {
+                        renameVulT.vulOnCommit((*removeList.front())->seqNum,
+                                    (*removeList.front())->threadNumber);
+                    }
+                    if(iqVulEnable) {
+                        pipeVulT.vulOnCommit(P_IQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                    }
+                    if(lsqVulEnable)
+                        pipeVulT.vulOnCommit(P_LSQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                }
+        }
 
         instList.erase(removeList.front());
 

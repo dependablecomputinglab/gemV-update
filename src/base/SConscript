@@ -71,6 +71,18 @@ Source('loader/object_file.cc')
 Source('loader/raw_object.cc')
 Source('loader/symtab.cc')
 
+#VUL
+Source('vulnerability/vul_main.cc')
+Source('vulnerability/vul_cache.cc')
+Source('vulnerability/vul_tag.cc')
+Source('vulnerability/vul_tlb.cc')
+Source('vulnerability/vul_regfile.cc')
+Source('vulnerability/vul_rob.cc')
+Source('vulnerability/vul_mshr.cc')
+Source('vulnerability/vul_rename.cc')
+Source('vulnerability/vul_tracker.cc')
+Source('vulnerability/vul_pipeline.cc')
+
 Source('stats/text.cc')
 
 DebugFlag('Annotate', "State machine annotation debugging")
@@ -85,6 +97,8 @@ DebugFlag('GDBSend', "Messages sent to the remote application")
 DebugFlag('GDBWrite', "Writes to the remote address space")
 DebugFlag('SQL', "SQL queries sent to the server")
 DebugFlag('StatEvents', "Statistics event tracking")
+DebugFlag('VulTracker', "Vulnerability tracker tracking")
+DebugFlag('VulTrackerROB', "Vulnerability tracker tracking")
 
 CompoundFlag('GDBAll',
     [ 'GDBMisc', 'GDBAcc', 'GDBRead', 'GDBWrite', 'GDBSend', 'GDBRecv',

@@ -56,7 +56,7 @@ using namespace std;
 
 BaseTags::BaseTags(const Params *p)
     : ClockedObject(p), blkSize(p->block_size), size(p->size),
-      hitLatency(p->hit_latency)
+      hitLatency(p->hit_latency), enableVulAnalysis(p->vul_analysis)      //VUL_TAG
 {
 }
 
@@ -124,6 +124,11 @@ BaseTags::regStats()
     }
 
     avgOccs = occupancies / Stats::constant(numBlocks);
+
+    tagVul
+        .name(name() + ".vulnerability")
+        .desc("Vulnerability of tag arrays in bit-ticks")
+        ;
 
     registerExitCallback(new BaseTagsCallback(this));
 }

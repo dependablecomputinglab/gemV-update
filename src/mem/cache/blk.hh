@@ -54,6 +54,7 @@
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/core.hh"          // for Tick
+#include "base/vulnerability/vul_main.hh"     // VUL_CACHE
 
 /**
  * Cache block status bit assignments
@@ -118,7 +119,14 @@ class CacheBlk
 
     /** holds the source requestor ID for this block. */
     int srcMasterId;
+    
+    /** Access history for data block used in data block vulnerability calculation*/
+    History dataVulHist[4];                                //VUL_CACHE
+    //std::vector<History> dataVulHist;
 
+    /** Access history for the tags used in tag vulnerability calculation */ 
+    History tagVulHist;                                 //VUL_CACHE
+    
   protected:
     /**
      * Represents that the indicated thread context has a "lock" on

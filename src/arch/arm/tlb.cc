@@ -74,6 +74,8 @@ TLB::TLB(const Params *p)
     memset(table, 0, sizeof(TlbEntry) * size);
 
     tableWalker->setTlb(this);
+
+    vulCalc = new TlbVulCalc;
 }
 
 TLB::~TLB()
@@ -127,6 +129,8 @@ TLB::lookup(Addr va, uint8_t cid, bool functional)
         x++;
     }
 
+        vulCalc->vulOnRead(this, va);                        //VUL_TLB
+
     DPRINTF(TLBVerbose, "Lookup %#x, cid %#x -> %s ppn %#x size: %#x pa: %#x ap:%d\n",
             va, cid, retval ? "hit" : "miss", retval ? retval->pfn : 0,
             retval ? retval->size : 0, retval ? retval->pAddr(va) : 0,
@@ -158,6 +162,8 @@ TLB::insert(Addr addr, TlbEntry &entry)
     table[0] = entry;
 
     inserts++;
+
+        vulCalc->vulOnIncoming(&entry);              //VUL_TLB
 }
 
 void
@@ -188,6 +194,7 @@ TLB::flushAll()
            DPRINTF(TLB, " -  %#x, asn %d ppn %#x size: %#x ap:%d\n",
                 te->vpn << te->N, te->asid, te->pfn << te->N, te->size, te->ap);
            flushedEntries++;
+           vulCalc->vulOnFlush(this, te, FLUSH_ALL, 0, 0);                       //VUL_TLB
        }
        x++;
     }
@@ -210,6 +217,7 @@ TLB::flushMvaAsid(Addr mva, uint64_t asn)
             te->vpn << te->N, te->asid, te->pfn << te->N, te->size, te->ap);
         te->valid = false;
         flushedEntries++;
+            vulCalc->vulOnFlush(this, te, FLUSH_MVA_ASID, 0, 0);                 //VUL_TLB
         te = lookup(mva,asn);
     }
     flushTlbMvaAsid++;
@@ -230,6 +238,7 @@ TLB::flushAsid(uint64_t asn)
             DPRINTF(TLB, " -  %#x, asn %d ppn %#x size: %#x ap:%d\n",
                 te->vpn << te->N, te->asid, te->pfn << te->N, te->size, te->ap);
             flushedEntries++;
+            vulCalc->vulOnFlush(this, te, FLUSH_ASID, asn, 0);                   //VUL_TLB
         }
         x++;
     }
@@ -252,6 +261,7 @@ TLB::flushMva(Addr mva)
             DPRINTF(TLB, " -  %#x, asn %d ppn %#x size: %#x ap:%d\n",
                 te->vpn << te->N, te->asid, te->pfn << te->N, te->size, te->ap);
             flushedEntries++;
+            vulCalc->vulOnFlush(this, te, FLUSH_MVA, 0, mva);                   //VUL_TLB
         }
         x++;
     }
@@ -400,6 +410,10 @@ TLB::regStats()
     permsFaults
         .name(name() + ".perms_faults")
         .desc("Number of TLB faults due to permissions restrictions")
+        ;
+    tlbVulnerability
+        .name(name() + ".vulnerability")
+        .desc("Vulenerability of the TLB in bit-ticks")
         ;
 
     instAccesses = instHits + instMisses;

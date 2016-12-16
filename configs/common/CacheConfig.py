@@ -46,6 +46,22 @@ from m5.objects import *
 from Caches import *
 
 def config_cache(options, system):
+    if options.cache_prot == "parity_block":
+        policy = 0
+    elif options.cache_prot == "parity_word":
+        policy = 1
+    elif options.cache_prot == "ecc_block":
+        policy = 2
+    elif options.cache_prot == "ecc_word":
+        policy = 3
+    elif options.cache_prot == "no_protection":
+        policy = 4
+
+    if options.vul_analysis == "yes":
+        vul_anal = 1
+    else:
+        vul_anal = 0
+
     if options.cpu_type == "arm_detailed":
         try:
             from O3_ARM_v7a import *
@@ -69,7 +85,9 @@ def config_cache(options, system):
         # bytes (256 bits).
         system.l2 = l2_cache_class(clk_domain=system.cpu_clk_domain,
                                    size=options.l2_size,
-                                   assoc=options.l2_assoc)
+                                   assoc=options.l2_assoc,
+                                   vul_analysis=vul_anal,
+                                   protection_policy=policy)
 
         system.tol2bus = CoherentBus(clk_domain = system.cpu_clk_domain,
                                      width = 32)
@@ -79,9 +97,13 @@ def config_cache(options, system):
     for i in xrange(options.num_cpus):
         if options.caches:
             icache = icache_class(size=options.l1i_size,
-                                  assoc=options.l1i_assoc)
+                                  assoc=options.l1i_assoc,
+                                  vul_analysis=vul_anal,
+                                  protection_policy=policy)
             dcache = dcache_class(size=options.l1d_size,
-                                  assoc=options.l1d_assoc)
+                                  assoc=options.l1d_assoc,
+                                  vul_analysis=vul_anal,
+                                  protection_policy=policy)
 
             # When connecting the caches, the clock is also inherited
             # from the CPU in question

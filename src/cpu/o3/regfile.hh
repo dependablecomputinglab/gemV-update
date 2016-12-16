@@ -211,7 +211,6 @@ class PhysRegFile
     void setIntReg(PhysRegIndex reg_idx, uint64_t val)
     {
         assert(isIntPhysReg(reg_idx));
-
         DPRINTF(IEW, "RegFile: Setting int register %i to %#x\n",
                 int(reg_idx), val);
 

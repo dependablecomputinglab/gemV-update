@@ -51,6 +51,7 @@
 #include "arch/registers.hh"
 #include "base/types.hh"
 #include "config/the_isa.hh"
+#include "base/vulnerability/vul_rob.hh"            //VUL_ROB
 
 struct DerivO3CPUParams;
 
@@ -323,6 +324,9 @@ class ROB
 
     /** Dummy instruction returned if there are no insts left. */
     DynInstPtr dummyInst;
+
+    /** ROB Vulnerability calculator */
+    RobVulCalc robVulCalc;                  //VUL_ROB
 
   private:
     /** The sequence number of the squashed instruction. */

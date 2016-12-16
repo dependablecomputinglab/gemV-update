@@ -59,6 +59,7 @@ ROB<Impl>::ROB(O3CPU *_cpu, DerivO3CPUParams *params)
       numEntries(params->numROBEntries),
       squashWidth(params->squashWidth),
       numInstsInROB(0),
+      robVulCalc(params->numROBEntries, params->numThreads),                //VUL_ROB
       numThreads(params->numThreads)
 {
     std::string policy = params->smtROBPolicy;
@@ -222,7 +223,11 @@ ROB<Impl>::insertInst(DynInstPtr &inst)
     ThreadID tid = inst->threadNumber;
 
     instList[tid].push_back(inst);
+    
 
+    if(this->cpu->robVulEnable) 
+        robVulCalc.vulOnInsert(numInstsInROB, tid, inst->seqNum);   //VUL_ROB
+    
     //Set Up head iterator if this is the 1st instruction in the ROB
     if (numInstsInROB == 0) {
         head = instList[tid].begin();
@@ -261,7 +266,7 @@ ROB<Impl>::retireHead(ThreadID tid)
 
     DPRINTF(ROB, "[tid:%u]: Retiring head instruction, "
             "instruction PC %s, [sn:%lli]\n", tid, head_inst->pcState(),
-            head_inst->seqNum);
+            head_inst->seqNumROB);
 
     --numInstsInROB;
     --threadEntries[tid];
@@ -335,7 +340,7 @@ ROB<Impl>::doSquash(ThreadID tid)
 
     assert(squashIt[tid] != instList[tid].end());
 
-    if ((*squashIt[tid])->seqNum < squashedSeqNum[tid]) {
+    if ((*squashIt[tid])->seqNumROB < squashedSeqNum[tid]) {
         DPRINTF(ROB, "[tid:%u]: Done squashing instructions.\n",
                 tid);
 
@@ -350,20 +355,22 @@ ROB<Impl>::doSquash(ThreadID tid)
     for (int numSquashed = 0;
          numSquashed < squashWidth &&
          squashIt[tid] != instList[tid].end() &&
-         (*squashIt[tid])->seqNum > squashedSeqNum[tid];
+         (*squashIt[tid])->seqNumROB > squashedSeqNum[tid];
          ++numSquashed)
     {
         DPRINTF(ROB, "[tid:%u]: Squashing instruction PC %s, seq num %i.\n",
                 (*squashIt[tid])->threadNumber,
                 (*squashIt[tid])->pcState(),
-                (*squashIt[tid])->seqNum);
+                (*squashIt[tid])->seqNumROB);
 
         // Mark the instruction as squashed, and ready to commit so that
         // it can drain out of the pipeline.
         (*squashIt[tid])->setSquashed();
 
         (*squashIt[tid])->setCanCommit();
-
+    
+        if(this->cpu->robVulEnable) 
+            robVulCalc.vulOnSquash(tid, (*squashIt[tid])->seqNum);      //VUL_ROB
 
         if (squashIt[tid] == instList[tid].begin()) {
             DPRINTF(ROB, "Reached head of instruction list while "
@@ -387,7 +394,7 @@ ROB<Impl>::doSquash(ThreadID tid)
 
 
     // Check if ROB is done squashing.
-    if ((*squashIt[tid])->seqNum <= squashedSeqNum[tid]) {
+    if ((*squashIt[tid])->seqNumROB <= squashedSeqNum[tid]) {
         DPRINTF(ROB, "[tid:%u]: Done squashing instructions.\n",
                 tid);
 
@@ -421,7 +428,7 @@ ROB<Impl>::updateHead()
 
         if (first_valid) {
             head = instList[tid].begin();
-            lowest_num = (*head)->seqNum;
+            lowest_num = (*head)->seqNumROB;
             first_valid = false;
             continue;
         }
@@ -432,9 +439,9 @@ ROB<Impl>::updateHead()
 
         assert(head_inst != 0);
 
-        if (head_inst->seqNum < lowest_num) {
+        if (head_inst->seqNumROB < lowest_num) {
             head = head_thread;
-            lowest_num = head_inst->seqNum;
+            lowest_num = head_inst->seqNumROB;
         }
     }
 
@@ -475,7 +482,7 @@ ROB<Impl>::updateTail()
         InstIt tail_thread = instList[tid].end();
         tail_thread--;
 
-        if ((*tail_thread)->seqNum > (*tail)->seqNum) {
+        if ((*tail_thread)->seqNumROB > (*tail)->seqNumROB) {
             tail = tail_thread;
         }
     }
@@ -541,6 +548,9 @@ template <class Impl>
 void
 ROB<Impl>::regStats()
 {
+    //VUL_ROB
+    robVulCalc.regStats();
+
     using namespace Stats;
     robReads
         .name(name() + ".rob_reads")
@@ -556,7 +566,7 @@ typename Impl::DynInstPtr
 ROB<Impl>::findInst(ThreadID tid, InstSeqNum squash_inst)
 {
     for (InstIt it = instList[tid].begin(); it != instList[tid].end(); it++) {
-        if ((*it)->seqNum == squash_inst) {
+        if ((*it)->seqNumROB == squash_inst) {
             return *it;
         }
     }

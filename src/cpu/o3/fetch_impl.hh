@@ -72,6 +72,8 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 
+#include "base/vulnerability/vul_tracker.hh"        //VUL_TRACKER
+
 using namespace std;
 
 template<class Impl>
@@ -91,6 +93,7 @@ DefaultFetch<Impl>::DefaultFetch(O3CPU *_cpu, DerivO3CPUParams *params)
       numFetchingThreads(params->smtNumFetchingThreads),
       finishTranslationEvent(this)
 {
+
     if (numThreads > Impl::MaxThreads)
         fatal("numThreads (%d) is larger than compiled limit (%d),\n"
               "\tincrease MaxThreads in src/cpu/o3/impl.hh\n",
@@ -383,6 +386,8 @@ DefaultFetch<Impl>::processCacheCompletion(PacketPtr pkt)
 
     memcpy(fetchBuffer[tid], pkt->getPtr<uint8_t>(), fetchBufferSize);
     fetchBufferValid[tid] = true;
+
+    // VUL_FETCHBUFFER This is where fetch buffer is written
 
     // Wake up the CPU (if it went to sleep and was waiting on
     // this completion event).
@@ -1116,6 +1121,16 @@ DefaultFetch<Impl>::buildInst(ThreadID tid, StaticInstPtr staticInst,
     assert(numInst < fetchWidth);
     toDecode->insts[toDecode->size++] = instruction;
 
+    //VUL_TRACKER Writing to Fetch Queue
+    if(this->cpu->pipeVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_OPCODE, instruction->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_PC, instruction->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_SEQNUM, instruction->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_FLAGS, instruction->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_ARCHSRCREGSIDX, instruction->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_FETCHQ, INST_ARCHDESTREGSIDX, instruction->seqNum);
+    }
+
     // Keep track of if we can take an interrupt at this boundary
     delayedCommit[tid] = instruction->isDelayedCommit();
 
@@ -1126,6 +1141,7 @@ template<class Impl>
 void
 DefaultFetch<Impl>::fetch(bool &status_change)
 {
+
     //////////////////////////////////////////
     // Start actual fetch
     //////////////////////////////////////////
@@ -1312,6 +1328,8 @@ DefaultFetch<Impl>::fetch(bool &status_change)
                           thisPC, nextPC, true);
 
             numInst++;
+            
+            // VUL_TRACKER
 
 #if TRACING_ON
             if (DTRACE(O3PipeView)) {
@@ -1334,6 +1352,9 @@ DefaultFetch<Impl>::fetch(bool &status_change)
 
             // Move to the next instruction, unless we have a branch.
             thisPC = nextPC;
+            
+            //VUL_PIPELINE end
+
             inRom = isRomMicroPC(thisPC.microPC());
 
             if (newMacro) {

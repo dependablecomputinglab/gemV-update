@@ -240,13 +240,13 @@ copyRegs(ThreadContext *src, ThreadContext *dest)
 {
     //copy int regs
     for (int i = 0; i < NumIntRegs; ++i)
-         dest->setIntReg(i, src->readIntReg(i));
+         dest->setIntRegFlat(i, src->readIntRegFlat(i));
     //copy float regs
     for (int i = 0; i < NumFloatRegs; ++i)
-         dest->setFloatRegBits(i, src->readFloatRegBits(i));
+         dest->setFloatRegBitsFlat(i, src->readFloatRegBitsFlat(i));
     //copy condition-code regs
     for (int i = 0; i < NumCCRegs; ++i)
-         dest->setCCReg(i, src->readCCReg(i));
+         dest->setCCRegFlat(i, src->readCCRegFlat(i));
     copyMiscRegs(src, dest);
     dest->pcState(src->pcState());
 }
@@ -261,9 +261,9 @@ uint64_t
 getRFlags(ThreadContext *tc)
 {
     const uint64_t ncc_flags(tc->readMiscRegNoEffect(MISCREG_RFLAGS));
-    const uint64_t cc_flags(tc->readIntReg(X86ISA::CCREG_ZAPS));
-    const uint64_t cfof_bits(tc->readIntReg(X86ISA::CCREG_CFOF));
-    const uint64_t df_bit(tc->readIntReg(X86ISA::CCREG_DF));
+    const uint64_t cc_flags(tc->readCCReg(X86ISA::CCREG_ZAPS));
+    const uint64_t cfof_bits(tc->readCCReg(X86ISA::CCREG_CFOF));
+    const uint64_t df_bit(tc->readCCReg(X86ISA::CCREG_DF));
     // ecf (PSEUDO(3)) & ezf (PSEUDO(4)) are only visible to
     // microcode, so we can safely ignore them.
 
@@ -276,13 +276,13 @@ getRFlags(ThreadContext *tc)
 void
 setRFlags(ThreadContext *tc, uint64_t val)
 {
-    tc->setIntReg(X86ISA::CCREG_ZAPS, val & ccFlagMask);
-    tc->setIntReg(X86ISA::CCREG_CFOF, val & cfofMask);
-    tc->setIntReg(X86ISA::CCREG_DF, val & DFBit);
+    tc->setCCReg(X86ISA::CCREG_ZAPS, val & ccFlagMask);
+    tc->setCCReg(X86ISA::CCREG_CFOF, val & cfofMask);
+    tc->setCCReg(X86ISA::CCREG_DF, val & DFBit);
 
     // Internal microcode registers (ECF & EZF)
-    tc->setIntReg(X86ISA::CCREG_ECF, 0);
-    tc->setIntReg(X86ISA::CCREG_EZF, 0);
+    tc->setCCReg(X86ISA::CCREG_ECF, 0);
+    tc->setCCReg(X86ISA::CCREG_EZF, 0);
 
     // Update the RFLAGS misc reg with whatever didn't go into the
     // magic registers.

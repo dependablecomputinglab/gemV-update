@@ -46,6 +46,8 @@
 #include "cpu/o3/free_list.hh"
 #include "cpu/o3/regfile.hh"
 #include "cpu/reg_class.hh"
+#include "base/statistics.hh"                                   //VUL_RENAME
+#include "base/vulnerability/vul_rename.hh"                     //VUL_RENAME
 
 /**
  * Register rename map for a single class of registers (e.g., integer
@@ -60,6 +62,7 @@ class SimpleRenameMap
 
     typedef TheISA::RegIndex RegIndex;
 
+    
   private:
 
     /** The acutal arch-to-phys register map */
@@ -134,6 +137,7 @@ class SimpleRenameMap
 
     /** Return the number of free entries on the associated free list. */
     unsigned numFreeEntries() const { return freeList->numFreeRegs(); }
+
 };
 
 
@@ -202,6 +206,11 @@ class UnifiedRenameMap
     {
         RenameInfo info = intMap.rename(rel_arch_reg);
         assert(regFile->isIntPhysReg(info.first));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnWrite(info.first,
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return info;
     }
 
@@ -213,6 +222,11 @@ class UnifiedRenameMap
     {
         RenameInfo info = floatMap.rename(rel_arch_reg);
         assert(regFile->isFloatPhysReg(info.first));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnWrite(info.first,
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return info;
     }
 
@@ -224,6 +238,11 @@ class UnifiedRenameMap
     {
         RenameInfo info = ccMap.rename(rel_arch_reg);
         assert(regFile->isCCPhysReg(info.first));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnWrite(info.first,
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return info;
     }
 
@@ -249,16 +268,21 @@ class UnifiedRenameMap
      * @param arch_reg The unified architectural register to look up.
      * @return The physical register it is currently mapped to.
      */
-    PhysRegIndex lookup(RegIndex arch_reg) const;
+    PhysRegIndex lookup(RegIndex arch_reg);
 
     /**
      * Perform lookup() on an integer register, given a relative
      * integer register index.
      */
-    PhysRegIndex lookupInt(RegIndex rel_arch_reg) const
+    PhysRegIndex lookupInt(RegIndex rel_arch_reg)
     {
         PhysRegIndex phys_reg = intMap.lookup(rel_arch_reg);
         assert(regFile->isIntPhysReg(phys_reg));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnRead(phys_reg,                      //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return phys_reg;
     }
 
@@ -266,10 +290,15 @@ class UnifiedRenameMap
      * Perform lookup() on a floating-point register, given a relative
      * floating-point register index.
      */
-    PhysRegIndex lookupFloat(RegIndex rel_arch_reg) const
+    PhysRegIndex lookupFloat(RegIndex rel_arch_reg)
     {
         PhysRegIndex phys_reg = floatMap.lookup(rel_arch_reg);
         assert(regFile->isFloatPhysReg(phys_reg));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnRead(phys_reg,                      //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return phys_reg;
     }
 
@@ -277,10 +306,15 @@ class UnifiedRenameMap
      * Perform lookup() on a condition-code register, given a relative
      * condition-code register index.
      */
-    PhysRegIndex lookupCC(RegIndex rel_arch_reg) const
+    PhysRegIndex lookupCC(RegIndex rel_arch_reg)
     {
         PhysRegIndex phys_reg = ccMap.lookup(rel_arch_reg);
         assert(regFile->isCCPhysReg(phys_reg));
+        //if(this->cpu->renameVulEnable)
+        //    renameMapVul += renameVulCalc.vulOnRead(phys_reg,                      //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
         return phys_reg;
     }
 
@@ -288,11 +322,12 @@ class UnifiedRenameMap
      * Perform lookup() on a misc register, given a relative
      * misc register index.
      */
-    PhysRegIndex lookupMisc(RegIndex rel_arch_reg) const
+    PhysRegIndex lookupMisc(RegIndex rel_arch_reg)
     {
         // misc regs aren't really renamed, just given an index
         // beyond the range of actual physical registers
         PhysRegIndex phys_reg = rel_arch_reg + regFile->totalNumPhysRegs();
+        //renameMapVul += renameVulCalc.vulOnRead(phys_reg);                      //VUL_RENAME
         return phys_reg;
     }
 
@@ -314,6 +349,11 @@ class UnifiedRenameMap
     {
         assert(regFile->isIntPhysReg(phys_reg));
         intMap.setEntry(arch_reg, phys_reg);
+        //if(this->cpu->renameVulEnable)
+        //    renameVulCalc.vulOnWrite(phys_reg,              //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
     }
 
     /**
@@ -324,6 +364,11 @@ class UnifiedRenameMap
     {
         assert(regFile->isFloatPhysReg(phys_reg));
         floatMap.setEntry(arch_reg, phys_reg);
+        //if(this->cpu->renameVulEnable)
+        //    renameVulCalc.vulOnWrite(phys_reg,              //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
     }
 
     /**
@@ -334,6 +379,11 @@ class UnifiedRenameMap
     {
         assert(regFile->isCCPhysReg(phys_reg));
         ccMap.setEntry(arch_reg, phys_reg);
+        //if(this->cpu->renameVulEnable)
+        //    renameVulCalc.vulOnWrite(phys_reg,              //VUL_RENAME
+        //        intMap.numFreeEntries()
+        //        +floatMap.numFreeEntries()
+        //        +ccMap.numFreeEntries());              //VUL_RENAME
     }
 
     /**
@@ -346,6 +396,10 @@ class UnifiedRenameMap
     {
         return std::min(intMap.numFreeEntries(), floatMap.numFreeEntries());
     }
+    
+    //Stats::Scalar renameMapVul;                                         //VUL_RENAME
+
+    //RenameVulCalc renameVulCalc;                                        //VUL_RENAME
 };
 
 #endif //__CPU_O3_RENAME_MAP_HH__

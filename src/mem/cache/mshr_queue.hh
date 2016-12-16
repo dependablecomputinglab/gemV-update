@@ -53,6 +53,7 @@
 #include "mem/cache/mshr.hh"
 #include "mem/packet.hh"
 #include "sim/drain.hh"
+#include "base/vulnerability/vul_mshr.hh"                   //VUL_MSHR
 
 /**
  * A Class for maintaining a list of pending and allocated memory requests.
@@ -100,6 +101,9 @@ class MSHRQueue : public Drainable
     /** The index of this queue within the cache (MSHR queue vs. write
      * buffer). */
     const int index;
+
+    /** Vulnerability calculator */
+    MshrVulCalc mshrVulCalc;                            //VUL_MSHR
 
     /**
      * Create a queue with a given number of entries.
@@ -225,6 +229,7 @@ class MSHRQueue : public Drainable
     }
 
     unsigned int drain(DrainManager *dm);
+
 };
 
 #endif //__MEM__CACHE__MISS__MSHR_QUEUE_HH__

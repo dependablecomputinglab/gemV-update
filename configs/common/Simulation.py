@@ -384,6 +384,10 @@ def run(options, root, testsys, cpu_class):
                 switch_cpus[i].addCheckerCpu()
                 switch_cpus_1[i].addCheckerCpu()
 
+            # enable/disable vulnerability analysis VUL
+            if options.vul_analysis == "yes":
+                switch_cpus[i].vul_analysis = 1
+
         testsys.switch_cpus = switch_cpus
         testsys.switch_cpus_1 = switch_cpus_1
         switch_cpu_list = [(testsys.cpu[i], switch_cpus[i]) for i in xrange(np)]

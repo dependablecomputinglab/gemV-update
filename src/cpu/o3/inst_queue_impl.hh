@@ -375,7 +375,6 @@ InstructionQueue<Impl>::regStats()
         .name(name() + ".fp_alu_accesses")
         .desc("Number of floating point alu accesses")
         .flags(total);
-
 }
 
 template <class Impl>
@@ -558,6 +557,16 @@ InstructionQueue<Impl>::insert(DynInstPtr &new_inst)
     assert(freeEntries != 0);
 
     instList[new_inst->threadNumber].push_back(new_inst);
+    
+    //VUL_TRACKER Write to IQ
+    if(this->cpu->iqVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_OPCODE, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PC, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_SEQNUM, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_FLAGS, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PHYSRCREGSIDX, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PHYDESTREGSIDX, new_inst->seqNum);
+    }
 
     --freeEntries;
 
@@ -604,6 +613,16 @@ InstructionQueue<Impl>::insertNonSpec(DynInstPtr &new_inst)
 
     instList[new_inst->threadNumber].push_back(new_inst);
 
+    //VUL_TRACKER Write to IQ
+    if(this->cpu->iqVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_OPCODE, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PC, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_SEQNUM, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_FLAGS, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PHYSRCREGSIDX, new_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_IQ, INST_PHYDESTREGSIDX, new_inst->seqNum);
+    }
+
     --freeEntries;
 
     new_inst->setInIQ();
@@ -641,6 +660,17 @@ InstructionQueue<Impl>::getInstToExecute()
     assert(!instsToExecute.empty());
     DynInstPtr inst = instsToExecute.front();
     instsToExecute.pop_front();
+
+    //VUL_TRACKER Read from Issue to Exec
+    if(this->cpu->pipeVulEnable) {
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_OPCODE, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_PC, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_SEQNUM, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_FLAGS, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_PHYSRCREGSIDX, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_I2EQ, INST_PHYDESTREGSIDX, inst->seqNum);
+    }
+    
     if (inst->isFloating()){
         fpInstQueueReads++;
     } else {
@@ -659,7 +689,7 @@ InstructionQueue<Impl>::addToOrderList(OpClass op_class)
 
     queue_entry.queueType = op_class;
 
-    queue_entry.oldestInst = readyInsts[op_class].top()->seqNum;
+    queue_entry.oldestInst = readyInsts[op_class].top()->seqNumIQ;
 
     ListOrderIt list_it = listOrder.begin();
     ListOrderIt list_end_it = listOrder.end();
@@ -692,7 +722,7 @@ InstructionQueue<Impl>::moveToYoungerInst(ListOrderIt list_order_it)
     ++next_it;
 
     queue_entry.queueType = op_class;
-    queue_entry.oldestInst = readyInsts[op_class].top()->seqNum;
+    queue_entry.oldestInst = readyInsts[op_class].top()->seqNumIQ;
 
     while (next_it != listOrder.end() &&
            (*next_it).oldestInst < queue_entry.oldestInst) {
@@ -720,6 +750,16 @@ InstructionQueue<Impl>::processFUCompletion(DynInstPtr &inst, int fu_idx)
     // the queue.
     issueToExecuteQueue->access(-1)->size++;
     instsToExecute.push_back(inst);
+
+    //VUL_TRACKER Write to Issue to Exec
+    if(this->cpu->pipeVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_OPCODE, inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PC, inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_SEQNUM, inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_FLAGS, inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYSRCREGSIDX, inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYDESTREGSIDX, inst->seqNum);
+    }
 }
 
 // @todo: Figure out a better way to remove the squashed items from the
@@ -740,6 +780,17 @@ InstructionQueue<Impl>::scheduleReadyInsts()
            (deferred_mem_inst = getDeferredMemInstToExecute()) != 0) {
         issueToExecuteQueue->access(0)->size++;
         instsToExecute.push_back(deferred_mem_inst);
+
+        //VUL_TRACKER Write to Issue to Exec
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_OPCODE, deferred_mem_inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PC, deferred_mem_inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_SEQNUM, deferred_mem_inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_FLAGS, deferred_mem_inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYSRCREGSIDX, deferred_mem_inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYDESTREGSIDX, deferred_mem_inst->seqNum);
+        }
+
         total_deferred_mem_issued++;
     }
 
@@ -766,7 +817,7 @@ InstructionQueue<Impl>::scheduleReadyInsts()
 
         issuing_inst->isFloating() ? fpInstQueueReads++ : intInstQueueReads++;
 
-        assert(issuing_inst->seqNum == (*order_it).oldestInst);
+        assert(issuing_inst->seqNumIQ == (*order_it).oldestInst);
 
         if (issuing_inst->isSquashed()) {
             readyInsts[op_class].pop();
@@ -804,6 +855,16 @@ InstructionQueue<Impl>::scheduleReadyInsts()
                 i2e_info->size++;
                 instsToExecute.push_back(issuing_inst);
 
+                //VUL_TRACKER Write to Issue to Exec
+                if(this->cpu->pipeVulEnable) {
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_OPCODE, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PC, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_SEQNUM, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_FLAGS, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYSRCREGSIDX, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnWrite(P_I2EQ, INST_PHYDESTREGSIDX, issuing_inst->seqNum);
+                }
+
                 // Add the FU onto the list of FU's to be freed next
                 // cycle if we used one.
                 if (idx >= 0)
@@ -831,7 +892,7 @@ InstructionQueue<Impl>::scheduleReadyInsts()
             DPRINTF(IQ, "Thread %i: Issuing instruction PC %s "
                     "[sn:%lli]\n",
                     tid, issuing_inst->pcState(),
-                    issuing_inst->seqNum);
+                    issuing_inst->seqNumIQ);
 
             readyInsts[op_class].pop();
 
@@ -852,6 +913,17 @@ InstructionQueue<Impl>::scheduleReadyInsts()
             if (!issuing_inst->isMemRef()) {
                 // Memory instructions can not be freed from the IQ until they
                 // complete.
+
+                //VUL_TRACKER Read IQ
+                if(this->cpu->iqVulEnable) {
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_OPCODE, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PC, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_SEQNUM, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_FLAGS, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PHYSRCREGSIDX, issuing_inst->seqNum);
+                    this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PHYDESTREGSIDX, issuing_inst->seqNum);
+                }
+
                 ++freeEntries;
                 count[tid]--;
                 issuing_inst->clearInIQ();
@@ -861,7 +933,7 @@ InstructionQueue<Impl>::scheduleReadyInsts()
 
             listOrder.erase(order_it++);
             statIssuedInstType[tid][op_class]++;
-            iewStage->incrWb(issuing_inst->seqNum);
+            iewStage->incrWb(issuing_inst->seqNumIQ);
         } else {
             statFuBusy[op_class]++;
             fuBusy[tid]++;
@@ -921,7 +993,7 @@ InstructionQueue<Impl>::commit(const InstSeqNum &inst, ThreadID tid)
     ListIt iq_it = instList[tid].begin();
 
     while (iq_it != instList[tid].end() &&
-           (*iq_it)->seqNum <= inst) {
+           (*iq_it)->seqNumIQ <= inst) {
         ++iq_it;
         instList[tid].pop_front();
     }
@@ -1023,7 +1095,7 @@ InstructionQueue<Impl>::addReadyMemInst(DynInstPtr &ready_inst)
     // or it has an older instruction than last time.
     if (!queueOnList[op_class]) {
         addToOrderList(op_class);
-    } else if (readyInsts[op_class].top()->seqNum  <
+    } else if (readyInsts[op_class].top()->seqNumIQ  <
                (*readyIt[op_class]).oldestInst) {
         listOrder.erase(readyIt[op_class]);
         addToOrderList(op_class);
@@ -1064,6 +1136,15 @@ InstructionQueue<Impl>::completeMemInst(DynInstPtr &completed_inst)
     DPRINTF(IQ, "Completing mem instruction PC: %s [sn:%lli]\n",
             completed_inst->pcState(), completed_inst->seqNum);
 
+    //VUL_TRACKER Read IQ
+    if(this->cpu->iqVulEnable) {
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_OPCODE, completed_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PC, completed_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_SEQNUM, completed_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_FLAGS, completed_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PHYSRCREGSIDX, completed_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_IQ, INST_PHYDESTREGSIDX, completed_inst->seqNum);
+    }
     ++freeEntries;
 
     completed_inst->memOpDone(true);
@@ -1137,7 +1218,7 @@ InstructionQueue<Impl>::doSquash(ThreadID tid)
     // Squash any instructions younger than the squashed sequence number
     // given.
     while (squash_it != instList[tid].end() &&
-           (*squash_it)->seqNum > squashedSeqNum[tid]) {
+           (*squash_it)->seqNumIQ > squashedSeqNum[tid]) {
 
         DynInstPtr squashed_inst = (*squash_it);
         squashed_inst->isFloating() ? fpInstQueueWrites++ : intInstQueueWrites++;
@@ -1155,7 +1236,7 @@ InstructionQueue<Impl>::doSquash(ThreadID tid)
              !squashed_inst->memOpDone())) {
 
             DPRINTF(IQ, "[tid:%i]: Instruction [sn:%lli] PC %s squashed.\n",
-                    tid, squashed_inst->seqNum, squashed_inst->pcState());
+                    tid, squashed_inst->seqNumIQ, squashed_inst->pcState());
 
             // Remove the instruction from the dependency list.
             if (!squashed_inst->isNonSpeculative() &&
@@ -1190,7 +1271,7 @@ InstructionQueue<Impl>::doSquash(ThreadID tid)
             } else if (!squashed_inst->isStoreConditional() ||
                        !squashed_inst->isCompleted()) {
                 NonSpecMapIt ns_inst_it =
-                    nonSpecInsts.find(squashed_inst->seqNum);
+                    nonSpecInsts.find(squashed_inst->seqNumIQ);
 
                 if (ns_inst_it == nonSpecInsts.end()) {
                     assert(squashed_inst->getFault() != NoFault);
@@ -1340,7 +1421,7 @@ InstructionQueue<Impl>::addIfReady(DynInstPtr &inst)
         // or it has an older instruction than last time.
         if (!queueOnList[op_class]) {
             addToOrderList(op_class);
-        } else if (readyInsts[op_class].top()->seqNum  <
+        } else if (readyInsts[op_class].top()->seqNumIQ  <
                    (*readyIt[op_class]).oldestInst) {
             listOrder.erase(readyIt[op_class]);
             addToOrderList(op_class);

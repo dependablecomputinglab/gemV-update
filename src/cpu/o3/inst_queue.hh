@@ -49,6 +49,8 @@
 #include <queue>
 #include <vector>
 
+#include "base/vulnerability/vul_structs.hh"                        //VUL_TRACKER
+
 #include "base/statistics.hh"
 #include "base/types.hh"
 #include "cpu/o3/dep_graph.hh"
@@ -85,6 +87,7 @@ class InstructionQueue
     //Typedefs from the Impl.
     typedef typename Impl::O3CPU O3CPU;
     typedef typename Impl::DynInstPtr DynInstPtr;
+    typedef typename Impl::DynInst DynInst;
 
     typedef typename Impl::CPUPol::IEW IEW;
     typedef typename Impl::CPUPol::MemDepUnit MemDepUnit;
@@ -512,7 +515,8 @@ class InstructionQueue
     Stats::Vector fuBusy;
     /** Number of times the FU was busy per instruction issued. */
     Stats::Formula fuBusyRate;
-   public:
+   
+  public:
     Stats::Scalar intInstQueueReads;
     Stats::Scalar intInstQueueWrites;
     Stats::Scalar intInstQueueWakeupAccesses;

@@ -554,7 +554,7 @@ DefaultCommit<Impl>::squashAll(ThreadID tid)
     // Hopefully this doesn't mess things up.  Basically I want to squash
     // all instructions of this thread.
     InstSeqNum squashed_inst = rob->isEmpty() ?
-        lastCommitedSeqNum[tid] : rob->readHeadInst(tid)->seqNum - 1;
+        lastCommitedSeqNum[tid] : rob->readHeadInst(tid)->seqNumROB - 1;
 
     // All younger instructions will be squashed. Set the sequence
     // number as the youngest instruction in the ROB (0 in this case.
@@ -639,7 +639,7 @@ void
 DefaultCommit<Impl>::squashAfter(ThreadID tid, DynInstPtr &head_inst)
 {
     DPRINTF(Commit, "Executing squash after for [tid:%i] inst [sn:%lli]\n",
-            tid, head_inst->seqNum);
+            tid, head_inst->seqNumROB);
 
     assert(!squashAfterInst[tid] || squashAfterInst[tid] == head_inst);
     commitStatus[tid] = SquashAfterPending;
@@ -700,14 +700,14 @@ DefaultCommit<Impl>::tick()
 
             DPRINTF(Commit,"[tid:%i]: Instruction [sn:%lli] PC %s is head of"
                     " ROB and ready to commit\n",
-                    tid, inst->seqNum, inst->pcState());
+                    tid, inst->seqNumROB, inst->pcState());
 
         } else if (!rob->isEmpty(tid)) {
             DynInstPtr inst = rob->readHeadInst(tid);
 
             DPRINTF(Commit,"[tid:%i]: Can't commit, Instruction [sn:%lli] PC "
                     "%s is head of ROB and not ready\n",
-                    tid, inst->seqNum, inst->pcState());
+                    tid, inst->seqNumROB, inst->pcState());
         }
 
         DPRINTF(Commit, "[tid:%i]: ROB has %d insts & %d free entries.\n",
@@ -987,7 +987,7 @@ DefaultCommit<Impl>::commitInsts()
         assert(tid == commit_thread);
 
         DPRINTF(Commit, "Trying to commit head instruction, [sn:%i] [tid:%i]\n",
-                head_inst->seqNum, tid);
+                head_inst->seqNumROB, tid);
 
         // If the head instruction is squashed, it is ready to retire
         // (be removed from the ROB) at any time.
@@ -1003,7 +1003,15 @@ DefaultCommit<Impl>::commitInsts()
             // Record that the number of ROB entries has changed.
             changedROBNumEntries[tid] = true;
         } else {
+            //VUL_TRACKER
+            if(this->cpu->robVulEnable)
+                head_inst->accessor = head_inst->ROB;
+
             pc[tid] = head_inst->pcState();
+
+            //VUL_TRACKER
+            if(this->cpu->robVulEnable)
+                head_inst->accessor = head_inst->OTHERS;
 
             // Increment the total number of non-speculative instructions
             // executed.
@@ -1017,11 +1025,14 @@ DefaultCommit<Impl>::commitInsts()
 
             if (commit_success) {
                 ++num_committed;
+                
+                if(this->cpu->robVulEnable) 
+                    rob->robVulCalc.vulOnCommit(tid, head_inst->seqNum);              //VUL_TRACKER
 
                 changedROBNumEntries[tid] = true;
 
                 // Set the doneSeqNum to the youngest committed instruction.
-                toIEW->commitInfo[tid].doneSeqNum = head_inst->seqNum;
+                toIEW->commitInfo[tid].doneSeqNum = head_inst->seqNumROB;
 
                 if (tid == 0) {
                     canHandleInterrupts =  (!head_inst->isDelayedCommit()) &&
@@ -1037,7 +1048,7 @@ DefaultCommit<Impl>::commitInsts()
                 TheISA::advancePC(pc[tid], head_inst->staticInst);
 
                 // Keep track of the last sequence number commited
-                lastCommitedSeqNum[tid] = head_inst->seqNum;
+                lastCommitedSeqNum[tid] = head_inst->seqNumROB;
 
                 // If this is an instruction that doesn't play nicely with
                 // others squash everything and restart fetch
@@ -1082,7 +1093,7 @@ DefaultCommit<Impl>::commitInsts()
             } else {
                 DPRINTF(Commit, "Unable to commit head instruction PC:%s "
                         "[tid:%i] [sn:%i].\n",
-                        head_inst->pcState(), tid ,head_inst->seqNum);
+                        head_inst->pcState(), tid ,head_inst->seqNumROB);
                 break;
             }
         }
@@ -1119,14 +1130,14 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
 
         DPRINTF(Commit, "Encountered a barrier or non-speculative "
                 "instruction [sn:%lli] at the head of the ROB, PC %s.\n",
-                head_inst->seqNum, head_inst->pcState());
+                head_inst->seqNumROB, head_inst->pcState());
 
         if (inst_num > 0 || iewStage->hasStoresToWB(tid)) {
             DPRINTF(Commit, "Waiting for all stores to writeback.\n");
             return false;
         }
 
-        toIEW->commitInfo[tid].nonSpecSeqNum = head_inst->seqNum;
+        toIEW->commitInfo[tid].nonSpecSeqNum = head_inst->seqNumROB;
 
         // Change the instruction so it won't try to commit again until
         // it is executed.
@@ -1134,7 +1145,7 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
 
         if (head_inst->isLoad() && head_inst->uncacheable()) {
             DPRINTF(Commit, "[sn:%lli]: Uncached load, PC %s.\n",
-                    head_inst->seqNum, head_inst->pcState());
+                    head_inst->seqNumROB, head_inst->pcState());
             toIEW->commitInfo[tid].uncached = true;
             toIEW->commitInfo[tid].uncachedLoad = head_inst;
         } else {
@@ -1165,7 +1176,7 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
 
     if (inst_fault != NoFault) {
         DPRINTF(Commit, "Inst [sn:%lli] PC %s has a fault\n",
-                head_inst->seqNum, head_inst->pcState());
+                head_inst->seqNumROB, head_inst->pcState());
 
         if (iewStage->hasStoresToWB(tid) || inst_num > 0) {
             DPRINTF(Commit, "Stores outstanding, fault must wait.\n");
@@ -1199,10 +1210,10 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
         commitStatus[tid] = TrapPending;
 
         DPRINTF(Commit, "Committing instruction with fault [sn:%lli]\n",
-            head_inst->seqNum);
+            head_inst->seqNumROB);
         if (head_inst->traceData) {
             if (DTRACE(ExecFaulting)) {
-                head_inst->traceData->setFetchSeq(head_inst->seqNum);
+                head_inst->traceData->setFetchSeq(head_inst->seqNumROB);
                 head_inst->traceData->setCPSeq(thread[tid]->numOp);
                 head_inst->traceData->dump();
             }
@@ -1234,9 +1245,9 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
         }
     }
     DPRINTF(Commit, "Committing instruction with [sn:%lli] PC %s\n",
-            head_inst->seqNum, head_inst->pcState());
+            head_inst->seqNumROB, head_inst->pcState());
     if (head_inst->traceData) {
-        head_inst->traceData->setFetchSeq(head_inst->seqNum);
+        head_inst->traceData->setFetchSeq(head_inst->seqNumROB);
         head_inst->traceData->setCPSeq(thread[tid]->numOp);
         head_inst->traceData->dump();
         delete head_inst->traceData;
@@ -1244,13 +1255,14 @@ DefaultCommit<Impl>::commitHead(DynInstPtr &head_inst, unsigned inst_num)
     }
     if (head_inst->isReturn()) {
         DPRINTF(Commit,"Return Instruction Committed [sn:%lli] PC %s \n",
-                        head_inst->seqNum, head_inst->pcState());
+                        head_inst->seqNumROB, head_inst->pcState());
     }
 
     // Update the commit rename map
     for (int i = 0; i < head_inst->numDestRegs(); i++) {
         renameMap[tid]->setEntry(head_inst->flattenedDestRegIdx(i),
                                  head_inst->renamedDestRegIdx(i));
+
     }
 
     // Finally clear the head ROB entry.
@@ -1283,6 +1295,10 @@ DefaultCommit<Impl>::getInsts()
         DynInstPtr inst;
 
         inst = fromRename->insts[inst_num];
+        
+        //VUL_TRACKER
+        inst->seqNumROB = inst->seqNum;
+
         ThreadID tid = inst->threadNumber;
 
         if (!inst->isSquashed() &&
@@ -1348,6 +1364,14 @@ DefaultCommit<Impl>::markCompletedInsts()
 
             // Mark the instruction as ready to commit.
             fromIEW->insts[inst_num]->setCanCommit();
+            
+            //VUL_TRACKER Read IEWQ
+            if(this->cpu->pipeVulEnable) {
+                this->cpu->pipeVulT.vulOnRead(P_IEWQ, INST_PC, fromIEW->insts[inst_num]->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_IEWQ, INST_SEQNUM, fromIEW->insts[inst_num]->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_IEWQ, INST_FLAGS, fromIEW->insts[inst_num]->seqNum);
+            }
+
         }
     }
 }
@@ -1514,7 +1538,7 @@ DefaultCommit<Impl>::oldestReady()
                 if (first) {
                     oldest = tid;
                     first = false;
-                } else if (head_inst->seqNum < oldest) {
+                } else if (head_inst->seqNumROB < oldest) {
                     oldest = tid;
                 }
             }

@@ -71,6 +71,7 @@
 #include "sim/full_system.hh"
 #include "sim/sim_exit.hh"
 #include "sim/system.hh"
+#include "base/vulnerability/vul_cache.hh"                  //VUL_CACHE
 
 class MSHR;
 /**
@@ -106,6 +107,7 @@ class BaseCache : public MemObject
         Request_PF,
         NUM_REQUEST_CAUSES
     };
+
 
   protected:
 
@@ -210,6 +212,9 @@ class BaseCache : public MemObject
             requestMemSideBus((RequestCause)mq->index, time);
         }
 
+        if(enableVulAnal)                                         //VUL_MSHR
+            mq->mshrVulCalc.vulOnAllocate(mq->allocated);         //VUL_MSHR
+
         return mshr;
     }
 
@@ -295,6 +300,15 @@ class BaseCache : public MemObject
   public:
     /** System we are currently operating in. */
     System *system;
+
+    /** Vulnerability calculator */
+    CacheVulCalc vulCalc;                               //VUL_CACHE
+
+    /** Enable/disable vulnerability analysis */
+    bool enableVulAnal;                                 //VUL_CACHE
+
+    /** Cache protection mode */
+    int protectionMode;                                 //VUL_CACHE
 
     // Statistics
     /**
@@ -429,6 +443,12 @@ class BaseCache : public MemObject
     Stats::Vector soft_prefetch_mshr_full;
 
     Stats::Scalar mshr_no_allocate_misses;
+    /** Vulnerability of the cache */
+    Stats::Scalar cacheVul;                                     //VUL_CACHE
+    /** Vulnerability of MSHR queue */
+    Stats::Scalar mshrVul;                                      //VUL_MSHR
+    /** Vulnerability of Write Buffer */
+    Stats::Scalar wbVul;                                        //VUL_MSHR
 
     /**
      * @}

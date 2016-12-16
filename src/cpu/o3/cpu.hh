@@ -67,6 +67,12 @@
 //#include "cpu/o3/thread_context.hh"
 #include "params/DerivO3CPU.hh"
 #include "sim/process.hh"
+#include "base/vulnerability/vul_regfile.hh"                    //VUL_RF
+
+#include "base/vulnerability/vul_tracker.hh"                    //VUL_TRACKER
+#include "base/vulnerability/vul_structs.hh"                    //VUL_TRACKER
+#include "base/vulnerability/vul_pipeline.hh"                   //VUL_TRACKER
+#include "base/vulnerability/vul_rename.hh"                   //VUL_TRACKER
 
 template <class>
 class Checker;
@@ -124,6 +130,14 @@ class FullO3CPU : public BaseO3CPU
 
     /** Overall CPU status. */
     Status _status;
+
+    /** VUL_TRACKER 
+     * State to track pipeline register being read from and written to
+     * */
+    //QueueType prevQueue;
+
+    //QueueType nextQueue;
+
 
   private:
 
@@ -795,6 +809,42 @@ class FullO3CPU : public BaseO3CPU
     /** The cycle that the CPU was last running, used for statistics. */
     Cycles lastRunningCycle;
 
+    /** Register file vulnerability calculator */
+    RegVulCalc regVulCalc;                                  //VUL_TRACKER
+
+    /** Fetch Queue vulnerability calculator */
+    PipeVulTracker pipeVulT;
+
+    /** Fetch Queue vulnerability calculator */
+    RenameVulCalc renameVulT;
+
+    /** Enable/disable vulnerability analysis */
+    bool enableVulAnalysis;                                 //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool robVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool rfVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool cacheVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool iqVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool lsqVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool pipeVulEnable;                                       //VUL_TRACKER
+
+    /** Enable/disable vulnerability analysis */
+    bool renameVulEnable;                                       //VUL_TRACKER
+
+    /** Ease of programming */
+    int totalNumRegs;                                       //VUL_TRACKER
+
     /** The cycle that the CPU was last activated by a new thread*/
     Tick lastActivatedCycle;
 
@@ -860,6 +910,7 @@ class FullO3CPU : public BaseO3CPU
     //number of misc
     Stats::Scalar miscRegfileReads;
     Stats::Scalar miscRegfileWrites;
+
 };
 
 #endif // __CPU_O3_CPU_HH__

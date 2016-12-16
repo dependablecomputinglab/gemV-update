@@ -110,6 +110,19 @@ def addCommonOptions(parser):
     parser.add_option("--l2_assoc", type="int", default=8)
     parser.add_option("--l3_assoc", type="int", default=16)
     parser.add_option("--cacheline_size", type="int", default=64)
+    
+    #VUL Vulnerability options
+    parser.add_option("--vul_analysis", type="choice", default="no",
+                choices = ["yes","no"],
+                help = "Vulnerability computation. Yes to enable, No to disable.")
+    parser.add_option("--cache_prot", type="choice", default="no_protection",
+                choices = ["parity_block","parity_word","ecc_block","ecc_word","no_protection"],
+                help = "Cache protection model. Choose one of parity_block, parity_word\
+                                                   ecc_block, ecc_word, no_protection")
+    parser.add_option("--fi_reg", type="int", default="1",
+                                help="display log for register")
+    parser.add_option("--vul_params", type="string",
+                help = "File specifying vulnerability enable options for each microarch component.")
 
     # Enable Ruby
     parser.add_option("--ruby", action="store_true")

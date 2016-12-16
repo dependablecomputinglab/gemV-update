@@ -53,6 +53,7 @@
 #include "mem/cache/tags/lru.hh"
 #include "mem/cache/base.hh"
 #include "sim/core.hh"
+#include "base/vulnerability/vul_main.hh"                   //VUL_CACHE
 
 using namespace std;
 
@@ -114,6 +115,16 @@ LRU::LRU(const Params *p)
             blk->size = blkSize;
             sets[i].blks[j]=blk;
             blk->set = i;
+
+            //VUL_TAG
+            vulCalc.init(blkSize, numSets);
+/*
+            for(unsigned i = 0; i < blkSize / WORD_SIZE; ++i) {
+                History h;
+                blk->dataVulHist.push_back(h);
+            }
+
+*/
         }
     }
 }
@@ -131,6 +142,10 @@ LRU::accessBlock(Addr addr, Cycles &lat, int master_id)
     Addr tag = extractTag(addr);
     unsigned set = extractSet(addr);
     BlkType *blk = sets[set].findBlk(tag);
+
+    if(enableVulAnalysis)
+      vulCalc.vulOnAccess(&sets[set],tag);                        //VUL_TAG
+
     lat = hitLatency;
     if (blk != NULL) {
         // move this block to head of the MRU list
@@ -168,6 +183,9 @@ LRU::findVictim(Addr addr, PacketList &writebacks)
         DPRINTF(CacheRepl, "set %x: selecting blk %x for replacement\n",
                 set, regenerateBlkAddr(blk->tag, set));
     }
+    if(enableVulAnalysis)
+        tagVul += vulCalc.vulOnEvict(blk);                   //VUL_TAG
+
     return blk;
 }
 
@@ -210,6 +228,9 @@ LRU::insertBlock(PacketPtr pkt, BlkType *blk)
     assert(master_id < cache->system->maxMasters());
     occupancies[master_id]++;
     blk->srcMasterId = master_id;
+
+    if(enableVulAnalysis)
+        vulCalc.vulOnInsert(blk);                                   //VUL_TAG
 
     unsigned set = extractSet(addr);
     sets[set].moveToHead(blk);

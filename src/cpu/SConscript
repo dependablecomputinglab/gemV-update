@@ -161,6 +161,11 @@ DebugFlag('O3PipeView')
 DebugFlag('PCEvent')
 DebugFlag('Quiesce')
 
+#VUL
+DebugFlag('BaseVulnerability')
+DebugFlag('vulRTL')
+#VUL
+
 CompoundFlag('ExecAll', [ 'ExecEnable', 'ExecCPSeq', 'ExecEffAddr',
     'ExecFaulting', 'ExecFetchSeq', 'ExecOpClass', 'ExecRegDelta',
     'ExecResult', 'ExecSpeculative', 'ExecSymbol', 'ExecThread',

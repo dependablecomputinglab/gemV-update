@@ -871,6 +871,16 @@ DefaultIEW<Impl>::sortInsts()
 #endif
     for (int i = 0; i < insts_from_rename; ++i) {
         insts[fromRename->insts[i]->threadNumber].push(fromRename->insts[i]);
+
+        //VUL_TRACKER Reading from Rename Queue
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_OPCODE, fromRename->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_PC, fromRename->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_SEQNUM, fromRename->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_FLAGS, fromRename->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_PHYSRCREGSIDX, fromRename->insts[i]->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_RENAMEQ, INST_PHYDESTREGSIDX, fromRename->insts[i]->seqNum);
+        }
     }
 }
 
@@ -1461,6 +1471,13 @@ DefaultIEW<Impl>::writebackInsts()
                 inst->seqNum, inst->pcState());
 
         iewInstsToCommit[tid]++;
+
+        //VUL_TRACKER
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnWrite(P_IEWQ, INST_PC, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_IEWQ, INST_SEQNUM, inst->seqNum);
+            this->cpu->pipeVulT.vulOnWrite(P_IEWQ, INST_FLAGS, inst->seqNum);
+        }
 
         // Some instructions will be sent to commit without having
         // executed because they need commit to handle them.

@@ -172,7 +172,7 @@ LSQUnit<Impl>::init(O3CPU *cpu_ptr, IEW *iew_ptr, DerivO3CPUParams *params,
     checkLoads = params->LSQCheckLoads;
     cachePorts = params->cachePorts;
     needsTSO = params->needsTSO;
-
+    
     resetState();
 }
 
@@ -359,7 +359,7 @@ LSQUnit<Impl>::insertLoad(DynInstPtr &load_inst)
     assert(loads < LQEntries);
 
     DPRINTF(LSQUnit, "Inserting load PC %s, idx:%i [sn:%lli]\n",
-            load_inst->pcState(), loadTail, load_inst->seqNum);
+            load_inst->pcState(), loadTail, load_inst->seqNumLSQ);
 
     load_inst->lqIdx = loadTail;
 
@@ -371,6 +371,16 @@ LSQUnit<Impl>::insertLoad(DynInstPtr &load_inst)
 
     loadQueue[loadTail] = load_inst;
 
+    //VUL_TRACKER Write IQ
+    if(this->cpu->lsqVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_OPCODE, load_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PC, load_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_SEQNUM, load_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_FLAGS, load_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PHYSRCREGSIDX, load_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PHYDESTREGSIDX, load_inst->seqNum);
+    }
+    
     incrLdIdx(loadTail);
 
     ++loads;
@@ -385,12 +395,22 @@ LSQUnit<Impl>::insertStore(DynInstPtr &store_inst)
     assert(stores < SQEntries);
 
     DPRINTF(LSQUnit, "Inserting store PC %s, idx:%i [sn:%lli]\n",
-            store_inst->pcState(), storeTail, store_inst->seqNum);
+            store_inst->pcState(), storeTail, store_inst->seqNumLSQ);
 
     store_inst->sqIdx = storeTail;
     store_inst->lqIdx = loadTail;
 
     storeQueue[storeTail] = SQEntry(store_inst);
+
+    //VUL_TRACKER Write IQ
+    if(this->cpu->lsqVulEnable) {
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_OPCODE, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PC, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_SEQNUM, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_FLAGS, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PHYSRCREGSIDX, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnWrite(P_LSQ, INST_PHYDESTREGSIDX, store_inst->seqNum);
+    }
 
     incrStIdx(storeTail);
 
@@ -459,12 +479,12 @@ LSQUnit<Impl>::checkSnoop(PacketPtr pkt)
 
         Addr load_addr = ld_inst->physEffAddr & cacheBlockMask;
         DPRINTF(LSQUnit, "-- inst [sn:%lli] load_addr: %#x to pktAddr:%#x\n",
-                    ld_inst->seqNum, load_addr, invalidate_addr);
+                    ld_inst->seqNumLSQ, load_addr, invalidate_addr);
 
         if (load_addr == invalidate_addr) {
             if (ld_inst->possibleLoadViolation()) {
                 DPRINTF(LSQUnit, "Conflicting load at addr %#x [sn:%lli]\n",
-                        ld_inst->physEffAddr, pkt->getAddr(), ld_inst->seqNum);
+                        ld_inst->physEffAddr, pkt->getAddr(), ld_inst->seqNumLSQ);
 
                 // Mark the load for re-execution
                 ld_inst->fault = new ReExec;
@@ -510,10 +530,10 @@ LSQUnit<Impl>::checkViolations(int load_idx, DynInstPtr &inst)
                 // squashed as it could have newer data
                 if (ld_inst->hitExternalSnoop()) {
                     if (!memDepViolator ||
-                            ld_inst->seqNum < memDepViolator->seqNum) {
+                            ld_inst->seqNumLSQ < memDepViolator->seqNum) {
                         DPRINTF(LSQUnit, "Detected fault with inst [sn:%lli] "
                                 "and [sn:%lli] at address %#x\n",
-                                inst->seqNum, ld_inst->seqNum, ld_eff_addr1);
+                                inst->seqNum, ld_inst->seqNumLSQ, ld_eff_addr1);
                         memDepViolator = ld_inst;
 
                         ++lsqMemOrderViolation;
@@ -521,7 +541,7 @@ LSQUnit<Impl>::checkViolations(int load_idx, DynInstPtr &inst)
                         return new GenericISA::M5PanicFault(
                                 "Detected fault with inst [sn:%lli] and "
                                 "[sn:%lli] at address %#x\n",
-                                inst->seqNum, ld_inst->seqNum, ld_eff_addr1);
+                                inst->seqNum, ld_inst->seqNumLSQ, ld_eff_addr1);
                     }
                 }
 
@@ -530,24 +550,24 @@ LSQUnit<Impl>::checkViolations(int load_idx, DynInstPtr &inst)
                 ld_inst->possibleLoadViolation(true);
                 DPRINTF(LSQUnit, "Found possible load violaiton at addr: %#x"
                         " between instructions [sn:%lli] and [sn:%lli]\n",
-                        inst_eff_addr1, inst->seqNum, ld_inst->seqNum);
+                        inst_eff_addr1, inst->seqNum, ld_inst->seqNumLSQ);
             } else {
                 // A load/store incorrectly passed this store.
                 // Check if we already have a violator, or if it's newer
                 // squash and refetch.
-                if (memDepViolator && ld_inst->seqNum > memDepViolator->seqNum)
+                if (memDepViolator && ld_inst->seqNumLSQ > memDepViolator->seqNum)
                     break;
 
                 DPRINTF(LSQUnit, "Detected fault with inst [sn:%lli] and "
                         "[sn:%lli] at address %#x\n",
-                        inst->seqNum, ld_inst->seqNum, ld_eff_addr1);
+                        inst->seqNum, ld_inst->seqNumLSQ, ld_eff_addr1);
                 memDepViolator = ld_inst;
 
                 ++lsqMemOrderViolation;
 
                 return new GenericISA::M5PanicFault("Detected fault with "
                         "inst [sn:%lli] and [sn:%lli] at address %#x\n",
-                        inst->seqNum, ld_inst->seqNum, ld_eff_addr1);
+                        inst->seqNum, ld_inst->seqNumLSQ, ld_eff_addr1);
             }
         }
 
@@ -573,6 +593,13 @@ LSQUnit<Impl>::executeLoad(DynInstPtr &inst)
     assert(!inst->isSquashed());
 
     load_fault = inst->initiateAcc();
+
+    //VUL_TRACKER
+    if(this->cpu->lsqVulEnable) {
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_OPCODE, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYSRCREGSIDX, inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYDESTREGSIDX, inst->seqNum);
+    }
 
     if (inst->isTranslationDelayed() &&
         load_fault == NoFault)
@@ -629,6 +656,13 @@ LSQUnit<Impl>::executeStore(DynInstPtr &store_inst)
 
     Fault store_fault = store_inst->initiateAcc();
 
+    //VUL_TRACKER
+    if(this->cpu->lsqVulEnable) {
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_OPCODE, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYSRCREGSIDX, store_inst->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYDESTREGSIDX, store_inst->seqNum);
+    }
+
     if (store_inst->isTranslationDelayed() &&
         store_fault == NoFault)
         return store_fault;
@@ -670,7 +704,15 @@ LSQUnit<Impl>::commitLoad()
     DPRINTF(LSQUnit, "Committing head load instruction, PC %s\n",
             loadQueue[loadHead]->pcState());
 
+    //VUL_TRACKER READ LSQ 
+    if(this->cpu->lsqVulEnable) {
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PC, loadQueue[loadHead]->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_SEQNUM, loadQueue[loadHead]->seqNum);
+        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_FLAGS, loadQueue[loadHead]->seqNum);
+    }
+
     loadQueue[loadHead] = NULL;
+
 
     incrLdIdx(loadHead);
 
@@ -683,7 +725,7 @@ LSQUnit<Impl>::commitLoads(InstSeqNum &youngest_inst)
 {
     assert(loads == 0 || loadQueue[loadHead]);
 
-    while (loads != 0 && loadQueue[loadHead]->seqNum <= youngest_inst) {
+    while (loads != 0 && loadQueue[loadHead]->seqNumLSQ <= youngest_inst) {
         commitLoad();
     }
 }
@@ -701,13 +743,13 @@ LSQUnit<Impl>::commitStores(InstSeqNum &youngest_inst)
         // Mark any stores that are now committed and have not yet
         // been marked as able to write back.
         if (!storeQueue[store_idx].canWB) {
-            if (storeQueue[store_idx].inst->seqNum > youngest_inst) {
+            if (storeQueue[store_idx].inst->seqNumLSQ > youngest_inst) {
                 break;
             }
             DPRINTF(LSQUnit, "Marking store as able to write back, PC "
                     "%s [sn:%lli]\n",
                     storeQueue[store_idx].inst->pcState(),
-                    storeQueue[store_idx].inst->seqNum);
+                    storeQueue[store_idx].inst->seqNumLSQ);
 
             storeQueue[store_idx].canWB = true;
 
@@ -791,6 +833,13 @@ LSQUnit<Impl>::writebackStores()
 
         storeQueue[storeWBIdx].committed = true;
 
+        //VUL_TRACKER READ LSQ 
+        if(this->cpu->lsqVulEnable) {
+            this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PC, storeQueue[storeWBIdx].inst->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_SEQNUM, storeQueue[storeWBIdx].inst->seqNum);
+            this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_FLAGS, storeQueue[storeWBIdx].inst->seqNum);
+        }
+
         assert(!inst->memData);
         inst->memData = new uint8_t[64];
 
@@ -860,6 +909,12 @@ LSQUnit<Impl>::writebackStores()
                     // if checker is loaded
                     inst->reqToVerify->setExtraData(0);
                     inst->completeAcc(data_pkt);
+                    //VUL_TRACKER
+                    if(this->cpu->lsqVulEnable) {
+                        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_OPCODE, inst->seqNum);
+                        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYSRCREGSIDX, inst->seqNum);
+                        this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYDESTREGSIDX, inst->seqNum);
+                    }
                 }
                 completeStore(storeWBIdx);
                 incrStIdx(storeWBIdx);
@@ -893,7 +948,7 @@ LSQUnit<Impl>::writebackStores()
         } else if (!sendStore(data_pkt)) {
             DPRINTF(IEW, "D-Cache became blocked when writing [sn:%lli], will"
                     "retry later\n",
-                    inst->seqNum);
+                    inst->seqNumLSQ);
 
             // Need to store the second packet, if split.
             if (split) {
@@ -914,7 +969,7 @@ LSQUnit<Impl>::writebackStores()
                     } else {
                         DPRINTF(IEW, "D-Cache became blocked when writing"
                                 " [sn:%lli] second packet, will retry later\n",
-                                inst->seqNum);
+                                inst->seqNumLSQ);
                     }
                 } else {
 
@@ -961,11 +1016,11 @@ LSQUnit<Impl>::squash(const InstSeqNum &squashed_num)
     int load_idx = loadTail;
     decrLdIdx(load_idx);
 
-    while (loads != 0 && loadQueue[load_idx]->seqNum > squashed_num) {
+    while (loads != 0 && loadQueue[load_idx]->seqNumLSQ > squashed_num) {
         DPRINTF(LSQUnit,"Load Instruction PC %s squashed, "
                 "[sn:%lli]\n",
                 loadQueue[load_idx]->pcState(),
-                loadQueue[load_idx]->seqNum);
+                loadQueue[load_idx]->seqNumLSQ);
 
         if (isStalled() && load_idx == stallingLoadIdx) {
             stalled = false;
@@ -980,6 +1035,7 @@ LSQUnit<Impl>::squash(const InstSeqNum &squashed_num)
 
         // Inefficient!
         loadTail = load_idx;
+        
 
         decrLdIdx(load_idx);
         ++lsqSquashedLoads;
@@ -1001,7 +1057,7 @@ LSQUnit<Impl>::squash(const InstSeqNum &squashed_num)
     decrStIdx(store_idx);
 
     while (stores != 0 &&
-           storeQueue[store_idx].inst->seqNum > squashed_num) {
+           storeQueue[store_idx].inst->seqNumLSQ > squashed_num) {
         // Instructions marked as can WB are already committed.
         if (storeQueue[store_idx].canWB) {
             break;
@@ -1010,12 +1066,12 @@ LSQUnit<Impl>::squash(const InstSeqNum &squashed_num)
         DPRINTF(LSQUnit,"Store Instruction PC %s squashed, "
                 "idx:%i [sn:%lli]\n",
                 storeQueue[store_idx].inst->pcState(),
-                store_idx, storeQueue[store_idx].inst->seqNum);
+                store_idx, storeQueue[store_idx].inst->seqNumLSQ);
 
         // I don't think this can happen.  It should have been cleared
         // by the stalling load.
         if (isStalled() &&
-            storeQueue[store_idx].inst->seqNum == stallingStoreIsn) {
+            storeQueue[store_idx].inst->seqNumLSQ == stallingStoreIsn) {
             panic("Is stalled should have been cleared by stalling load!\n");
             stalled = false;
             stallingStoreIsn = 0;
@@ -1043,6 +1099,7 @@ LSQUnit<Impl>::squash(const InstSeqNum &squashed_num)
 
         // Inefficient!
         storeTail = store_idx;
+        
 
         decrStIdx(store_idx);
         ++lsqSquashedStores;
@@ -1054,7 +1111,7 @@ void
 LSQUnit<Impl>::storePostSend(PacketPtr pkt)
 {
     if (isStalled() &&
-        storeQueue[storeWBIdx].inst->seqNum == stallingStoreIsn) {
+        storeQueue[storeWBIdx].inst->seqNumLSQ == stallingStoreIsn) {
         DPRINTF(LSQUnit, "Unstalling, stalling store [sn:%lli] "
                 "load idx:%i\n",
                 stallingStoreIsn, stallingLoadIdx);
@@ -1100,6 +1157,19 @@ LSQUnit<Impl>::writeback(DynInstPtr &inst, PacketPtr pkt)
 
         // Complete access to copy data to proper place.
         inst->completeAcc(pkt);
+        //VUL_TRACKER
+        if(this->cpu->lsqVulEnable) {
+            if(inst->isStore()) {
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_OPCODE, inst->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYSRCREGSIDX, inst->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYDESTREGSIDX, inst->seqNum);
+            }
+            if(inst->isLoad()) {
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_OPCODE, inst->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYSRCREGSIDX, inst->seqNum);
+                this->cpu->pipeVulT.vulOnRead(P_LSQ, INST_PHYDESTREGSIDX, inst->seqNum);
+            }
+        }
     }
 
     // Need to insert instruction into queue to commit
@@ -1137,7 +1207,7 @@ LSQUnit<Impl>::completeStore(int store_idx)
 
     DPRINTF(LSQUnit, "Completing store [sn:%lli], idx:%i, store head "
             "idx:%i\n",
-            storeQueue[store_idx].inst->seqNum, store_idx, storeHead);
+            storeQueue[store_idx].inst->seqNumLSQ, store_idx, storeHead);
 
 #if TRACING_ON
     if (DTRACE(O3PipeView)) {
@@ -1147,7 +1217,7 @@ LSQUnit<Impl>::completeStore(int store_idx)
 #endif
 
     if (isStalled() &&
-        storeQueue[store_idx].inst->seqNum == stallingStoreIsn) {
+        storeQueue[store_idx].inst->seqNumLSQ == stallingStoreIsn) {
         DPRINTF(LSQUnit, "Unstalling, stalling store [sn:%lli] "
                 "load idx:%i\n",
                 stallingStoreIsn, stallingLoadIdx);

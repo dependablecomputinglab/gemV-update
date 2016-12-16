@@ -120,6 +120,7 @@ class DefaultRename
     ThreadStatus renameStatus[Impl::MaxThreads];
 
   public:
+
     /** DefaultRename constructor. */
     DefaultRename(O3CPU *_cpu, DerivO3CPUParams *params);
 

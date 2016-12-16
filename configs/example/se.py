@@ -216,6 +216,46 @@ for i in xrange(np):
     if options.checker:
         system.cpu[i].addCheckerCpu()
 
+    #VUL
+    if options.vul_analysis == "yes":                                   #VUL
+        system.cpu[i].vul_analysis = 1;                                 #VUL
+    if options.fi_reg:
+        system.cpu[i].fi_reg = options.fi_reg
+    if options.vul_params:
+        with open(options.vul_params) as pf:
+            for line in pf.readlines():
+                line = line.strip()
+                print line
+
+                if "=" in line:
+                    parts = line.split("=")
+                    print parts[0]
+                    print parts[1]
+                    
+                    if parts[0] == "rob":
+                        if parts[1] == "true":
+                            system.cpu[i].rob_vul_enable = 1;
+                    elif parts[0] == "registerfile":
+                        if parts[1] == "true":
+                            system.cpu[i].rf_vul_enable = 1;
+                    elif parts[0] == "cache":
+                        if parts[1] == "true":
+                            system.cpu[i].cache_vul_enable = 1;
+                    elif parts[0] == "iq":
+                        if parts[1] == "true":
+                            system.cpu[i].iq_vul_enable = 1;
+                    elif parts[0] == "lsq":
+                        if parts[1] == "true":
+                            system.cpu[i].lsq_vul_enable = 1;
+                    elif parts[0] == "pipeline":
+                        if parts[1] == "true":
+                            system.cpu[i].pipeline_vul_enable = 1;
+                    elif parts[0] == "rename":
+                        if parts[1] == "true":
+                            system.cpu[i].rename_vul_enable = 1;
+
+
+
     system.cpu[i].createThreads()
 
 if options.ruby:

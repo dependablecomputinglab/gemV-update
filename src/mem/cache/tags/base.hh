@@ -55,6 +55,7 @@
 #include "base/statistics.hh"
 #include "params/BaseTags.hh"
 #include "sim/clocked_object.hh"
+#include "base/vulnerability/vul_tag.hh"                  //VUL_CACHE
 
 class BaseCache;
 
@@ -124,6 +125,9 @@ class BaseTags : public ClockedObject
     /**
      * @}
      */
+    
+    /** Vulnerability of tag arrays in bit-ticks */
+    Stats::Scalar tagVul;                           //VUL_TAG
 
   public:
     typedef BaseTagsParams Params;
@@ -161,6 +165,12 @@ class BaseTags : public ClockedObject
      * Print all tags used
      */
     virtual std::string print() const = 0;
+
+    /** Vulnerability calculator for tag arrays */
+    TagVulCalc vulCalc;                                          //VUL_TAG
+
+    /** Enable/disable vulnerability analysis */
+    bool enableVulAnalysis;                                     //VUL_TAG
 };
 
 class BaseTagsCallback : public Callback

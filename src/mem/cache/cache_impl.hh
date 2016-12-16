@@ -167,12 +167,21 @@ Cache<TagStore>::satisfyCpuSideRequest(PacketPtr pkt, BlkType *blk,
         if (blk->checkWrite(pkt)) {
             pkt->writeDataToBlock(blk->data, blkSize);
             blk->status |= BlkDirty;
+
+            // VUL_CACHE: Write to block
+            if(enableVulAnal)
+                vulCalc.vulOnWrite(blk, pkt);                                //VUL_CACHE
         }
     } else if (pkt->isRead()) {
         if (pkt->isLLSC()) {
             blk->trackLoadLocked(pkt);
         }
         pkt->setDataFromBlock(blk->data, blkSize);
+        
+        //VUL_CACHE: Read access on block
+        if(enableVulAnal)
+            cacheVul += vulCalc.vulOnRead(blk, pkt);                                     //VUL_CACHE
+
         if (pkt->getSize() == blkSize) {
             // special handling for coherent block requests from
             // upper-level caches
@@ -1036,6 +1045,15 @@ Cache<TagStore>::recvTimingResp(PacketPtr pkt)
                           pkt->busLastWordDelay);
     } else {
         mq->deallocate(mshr);
+        
+        if(enableVulAnal) {                                                 //VUL_MSHR
+            long vul = mq->mshrVulCalc.vulOnDeallocate(mq->allocated);      //VUL_MSHR
+            if(mq->index == MSHRQueue_MSHRs)
+                mshrVul += vul;
+            else
+                wbVul += vul;
+        }
+
         if (wasFull && !mq->isFull()) {
             clearBlocked((BlockedCause)mq->index);
         }
@@ -1190,6 +1208,10 @@ Cache<TagStore>::allocateBlock(Addr addr, PacketList &writebacks)
                     repl_addr, addr,
                     blk->isDirty() ? "writeback" : "clean");
 
+            /** VUL_CACHE: Writeback/eviction */
+            if(enableVulAnal)
+                cacheVul += vulCalc.vulOnEvict(blk);                //VUL_CACHE
+
             if (blk->isDirty()) {
                 // Save writeback packet for handling by caller
                 writebacks.push_back(writebackBlk(blk));
@@ -1231,6 +1253,11 @@ Cache<TagStore>::handleFill(PacketPtr pkt, BlkType *blk,
             DPRINTF(Cache, "using temp block for %x\n", addr);
         } else {
             tags->insertBlock(pkt, blk);
+            
+            /** VUL_CACHE: Incoming block */
+            if(enableVulAnal)
+                vulCalc.vulOnInsert(blk);                                   //VUL_CACHE
+
         }
 
         // we should never be overwriting a valid block

@@ -83,7 +83,6 @@ SimpleRenameMap::rename(RegIndex arch_reg)
     return RenameInfo(renamed_reg, prev_reg);
 }
 
-
 /**** UnifiedRenameMap methods ****/
 
 void
@@ -99,6 +98,10 @@ UnifiedRenameMap::init(PhysRegFile *_regFile,
     floatMap.init(TheISA::NumFloatRegs, &(freeList->floatList), _floatZeroReg);
 
     ccMap.init(TheISA::NumFloatRegs, &(freeList->ccList), (RegIndex)-1);
+
+    //renameVulCalc.init(freeList->numFreeIntRegs(), freeList->numFreeFloatRegs()
+    //                        , freeList->numFreeCCRegs());
+    //renameVulCalc.init(TheISA::NumIntRegs, TheISA::NumFloatRegs, TheISA::NumCCRegs);
 }
 
 
@@ -128,7 +131,7 @@ UnifiedRenameMap::rename(RegIndex arch_reg)
 
 
 PhysRegIndex
-UnifiedRenameMap::lookup(RegIndex arch_reg) const
+UnifiedRenameMap::lookup(RegIndex arch_reg)
 {
     RegIndex rel_arch_reg;
 
