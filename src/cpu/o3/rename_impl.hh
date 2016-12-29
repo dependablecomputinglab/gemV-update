@@ -978,7 +978,7 @@ DefaultRename<Impl>::doSquash(const InstSeqNum &squashed_seq_num, ThreadID tid)
                 //this->cpu->renameVulT.vulOnReadHB(hb_it->archReg, hb_it->instSeqNum, tid);
                 this->cpu->renameVulT.vulOnReadHB(arch_reg_index, hb_it->instSeqNum, tid);
                 
-                this->cpu->renameVulT.vulOnSquash(hb_it->instSeqNum , tid);
+                //this->cpu->renameVulT.vulOnSquash(hb_it->instSeqNum , tid);
                 
                 //this->cpu->renameVulT.vulOnWrite(hb_it->archReg, squashed_seq_num, tid);
                 this->cpu->renameVulT.vulOnWrite(arch_reg_index, squashed_seq_num, tid);
@@ -1073,7 +1073,7 @@ DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
 
             //VUL_TRACKER Read rename map
             if(this->cpu->renameVulEnable)
-                this->cpu->renameVulT.vulOnRead((int)flat_rel_src_reg, inst->seqNum, tid);
+                this->cpu->renameVulT.vulOnReadSrc((int)flat_rel_src_reg, inst->seqNum, tid);
 
             intRenameLookups++;
             break;
@@ -1084,7 +1084,7 @@ DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
 
             //VUL_TRACKER Read rename map
             if(this->cpu->renameVulEnable)
-                this->cpu->renameVulT.vulOnRead((int)(flat_rel_src_reg + TheISA::NumIntRegs), 
+                this->cpu->renameVulT.vulOnReadSrc((int)(flat_rel_src_reg + TheISA::NumIntRegs), 
                                     inst->seqNum, tid);
 
             fpRenameLookups++;
@@ -1096,7 +1096,7 @@ DefaultRename<Impl>::renameSrcRegs(DynInstPtr &inst, ThreadID tid)
 
             //VUL_TRACKER Read rename map
             if(this->cpu->renameVulEnable)
-                this->cpu->renameVulT.vulOnRead((int)(flat_rel_src_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), 
+                this->cpu->renameVulT.vulOnReadSrc((int)(flat_rel_src_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), 
                                     inst->seqNum, tid);
 
             break;
@@ -1157,7 +1157,7 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)flat_rel_dest_reg, inst->seqNum, tid);
-                this->cpu->renameVulT.vulOnWrite((int)flat_rel_dest_reg, inst->seqNum, tid);
+                //this->cpu->renameVulT.vulOnWrite((int)flat_rel_dest_reg, inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)flat_rel_dest_reg, inst->seqNum, tid);
             }
 
@@ -1172,8 +1172,8 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
                             , inst->seqNum, tid);
-                this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
-                            , inst->seqNum, tid);
+                //this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
+                //            , inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
                             , inst->seqNum, tid);
             }
@@ -1188,7 +1188,7 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
-                this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
+                //this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
             }
 

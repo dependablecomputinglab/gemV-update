@@ -1685,9 +1685,9 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
         if((*removeList.front())->isSquashed() || !(*removeList.front())->isCommitted()) {
             if(rfVulEnable)
                 regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
-            if(renameVulEnable)
-                renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
-                                    (*removeList.front())->threadNumber);
+            //if(renameVulEnable) //HwiSoo
+            //    renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
+            //                        (*removeList.front())->threadNumber);
 
 
         } else if((*removeList.front())->isCommitted()) {
@@ -1702,9 +1702,9 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
                     } 
                     if(rfVulEnable)
                         regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
-                    if(renameVulEnable)
-                        renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
-                                    (*removeList.front())->threadNumber);
+                    //if(renameVulEnable) //HwiSoo
+                    //    renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
+                    //                (*removeList.front())->threadNumber);
                     if(iqVulEnable)
                         pipeVulT.vulOnSquash(P_IQ, (*removeList.front())->seqNum);
                     if(lsqVulEnable)
