@@ -1,6 +1,6 @@
 # -*- mode:python -*-
 
-# Copyright (c) 2013 ARM Limited
+# Copyright (c) 2013, 2015, 2016 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -109,8 +109,10 @@ For more details, see:
     raise
 
 # Global Python includes
+import itertools
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -172,6 +174,9 @@ AddLocalOption('--colors', dest='use_colors', action='store_true',
                help="Add color to abbreviated scons output")
 AddLocalOption('--no-colors', dest='use_colors', action='store_false',
                help="Don't add color to abbreviated scons output")
+AddLocalOption('--with-cxx-config', dest='with_cxx_config',
+               action='store_true',
+               help="Build with support for C++-based configuration")
 AddLocalOption('--default', dest='default', type='string', action='store',
                help='Override which build_opts file to use for defaults')
 AddLocalOption('--ignore-style', dest='ignore_style', action='store_true',
@@ -182,6 +187,16 @@ AddLocalOption('--update-ref', dest='update_ref', action='store_true',
                help='Update test reference outputs')
 AddLocalOption('--verbose', dest='verbose', action='store_true',
                help='Print full tool command lines')
+AddLocalOption('--without-python', dest='without_python',
+               action='store_true',
+               help='Build without Python configuration support')
+AddLocalOption('--without-tcmalloc', dest='without_tcmalloc',
+               action='store_true',
+               help='Disable linking against tcmalloc')
+AddLocalOption('--with-ubsan', dest='with_ubsan', action='store_true',
+               help='Build with Undefined Behavior Sanitizer if available')
+AddLocalOption('--with-asan', dest='with_asan', action='store_true',
+               help='Build with Address Sanitizer if available')
 
 termcap = get_termcap(GetOption('use_colors'))
 
@@ -193,23 +208,28 @@ termcap = get_termcap(GetOption('use_colors'))
 
 # export TERM so that clang reports errors in color
 use_vars = set([ 'AS', 'AR', 'CC', 'CXX', 'HOME', 'LD_LIBRARY_PATH',
-                 'LIBRARY_PATH', 'PATH', 'PKG_CONFIG_PATH', 'PYTHONPATH',
-                 'RANLIB', 'SWIG', 'TERM' ])
+                 'LIBRARY_PATH', 'PATH', 'PKG_CONFIG_PATH', 'PROTOC',
+                 'PYTHONPATH', 'RANLIB', 'SWIG', 'TERM' ])
 
 use_prefixes = [
-    "M5",           # M5 configuration (e.g., path to kernels)
-    "DISTCC_",      # distcc (distributed compiler wrapper) configuration
-    "CCACHE_",      # ccache (caching compiler wrapper) configuration
-    "CCC_",         # clang static analyzer configuration
+    "ASAN_",           # address sanitizer symbolizer path and settings
+    "CCACHE_",         # ccache (caching compiler wrapper) configuration
+    "CCC_",            # clang static analyzer configuration
+    "DISTCC_",         # distcc (distributed compiler wrapper) configuration
+    "INCLUDE_SERVER_", # distcc pump server settings
+    "M5",              # M5 configuration (e.g., path to kernels)
     ]
 
 use_env = {}
-for key,val in os.environ.iteritems():
+for key,val in sorted(os.environ.iteritems()):
     if key in use_vars or \
             any([key.startswith(prefix) for prefix in use_prefixes]):
         use_env[key] = val
 
-main = Environment(ENV=use_env)
+# Tell scons to avoid implicit command dependencies to avoid issues
+# with the param wrappes being compiled twice (see
+# http://scons.tigris.org/issues/show_bug.cgi?id=2811)
+main = Environment(ENV=use_env, IMPLICIT_COMMAND_DEPENDENCIES=0)
 main.Decider('MD5-timestamp')
 main.root = Dir(".")         # The current directory (where this file lives).
 main.srcdir = Dir("src")     # The source directory
@@ -241,21 +261,33 @@ main.AppendENVPath('PYTHONPATH', extra_python_paths)
 
 hgdir = main.root.Dir(".hg")
 
-mercurial_style_message = """
+
+style_message = """
 You're missing the gem5 style hook, which automatically checks your code
-against the gem5 style rules on hg commit and qrefresh commands.  This
-script will now install the hook in your .hg/hgrc file.
+against the gem5 style rules on %s.
+This script will now install the hook in your %s.
+Press enter to continue, or ctrl-c to abort: """
+
+mercurial_style_message = style_message % ("hg commit and qrefresh commands",
+                                           ".hg/hgrc file")
+git_style_message = style_message % ("'git commit'",
+                                     ".git/hooks/ directory")
+
+mercurial_style_upgrade_message = """
+Your Mercurial style hooks are not up-to-date. This script will now
+try to automatically update them. A backup of your hgrc will be saved
+in .hg/hgrc.old.
 Press enter to continue, or ctrl-c to abort: """
 
 mercurial_style_hook = """
 # The following lines were automatically added by gem5/SConstruct
 # to provide the gem5 style-checking hooks
 [extensions]
-style = %s/util/style.py
+hgstyle = %s/util/hgstyle.py
 
 [hooks]
-pretxncommit.style = python:style.check_style
-pre-qrefresh.style = python:style.check_style
+pretxncommit.style = python:hgstyle.check_style
+pre-qrefresh.style = python:hgstyle.check_style
 # End of SConstruct additions
 
 """ % (main.root.abspath)
@@ -267,20 +299,58 @@ hook. It is important.
 """
 
 # Check for style hook and prompt for installation if it's not there.
-# Skip this if --ignore-style was specified, there's no .hg dir to
-# install a hook in, or there's no interactive terminal to prompt.
-if not GetOption('ignore_style') and hgdir.exists() and sys.stdin.isatty():
+# Skip this if --ignore-style was specified, there's no interactive
+# terminal to prompt, or no recognized revision control system can be
+# found.
+ignore_style = GetOption('ignore_style') or not sys.stdin.isatty()
+
+# Try wire up Mercurial to the style hooks
+if not ignore_style and hgdir.exists():
     style_hook = True
+    style_hooks = tuple()
+    hgrc = hgdir.File('hgrc')
+    hgrc_old = hgdir.File('hgrc.old')
     try:
         from mercurial import ui
         ui = ui.ui()
-        ui.readconfig(hgdir.File('hgrc').abspath)
-        style_hook = ui.config('hooks', 'pretxncommit.style', None) and \
-                     ui.config('hooks', 'pre-qrefresh.style', None)
+        ui.readconfig(hgrc.abspath)
+        style_hooks = (ui.config('hooks', 'pretxncommit.style', None),
+                       ui.config('hooks', 'pre-qrefresh.style', None))
+        style_hook = all(style_hooks)
+        style_extension = ui.config('extensions', 'style', None)
     except ImportError:
         print mercurial_lib_not_found
 
-    if not style_hook:
+    if "python:style.check_style" in style_hooks:
+        # Try to upgrade the style hooks
+        print mercurial_style_upgrade_message
+        # continue unless user does ctrl-c/ctrl-d etc.
+        try:
+            raw_input()
+        except:
+            print "Input exception, exiting scons.\n"
+            sys.exit(1)
+        shutil.copyfile(hgrc.abspath, hgrc_old.abspath)
+        re_style_hook = re.compile(r"^([^=#]+)\.style\s*=\s*([^#\s]+).*")
+        re_style_extension = re.compile("style\s*=\s*([^#\s]+).*")
+        old, new = open(hgrc_old.abspath, 'r'), open(hgrc.abspath, 'w')
+        for l in old:
+            m_hook = re_style_hook.match(l)
+            m_ext = re_style_extension.match(l)
+            if m_hook:
+                hook, check = m_hook.groups()
+                if check != "python:style.check_style":
+                    print "Warning: %s.style is using a non-default " \
+                        "checker: %s" % (hook, check)
+                if hook not in ("pretxncommit", "pre-qrefresh"):
+                    print "Warning: Updating unknown style hook: %s" % hook
+
+                l = "%s.style = python:hgstyle.check_style\n" % hook
+            elif m_ext and m_ext.group(1) == style_extension:
+                l = "hgstyle = %s/util/hgstyle.py\n" % main.root.abspath
+
+            new.write(l)
+    elif not style_hook:
         print mercurial_style_message,
         # continue unless user does ctrl-c/ctrl-d etc.
         try:
@@ -291,13 +361,54 @@ if not GetOption('ignore_style') and hgdir.exists() and sys.stdin.isatty():
         hgrc_path = '%s/.hg/hgrc' % main.root.abspath
         print "Adding style hook to", hgrc_path, "\n"
         try:
-            hgrc = open(hgrc_path, 'a')
-            hgrc.write(mercurial_style_hook)
-            hgrc.close()
+            with open(hgrc_path, 'a') as f:
+                f.write(mercurial_style_hook)
         except:
             print "Error updating", hgrc_path
             sys.exit(1)
 
+def install_git_style_hooks():
+    try:
+        gitdir = Dir(readCommand(
+            ["git", "rev-parse", "--git-dir"]).strip("\n"))
+    except Exception, e:
+        print "Warning: Failed to find git repo directory: %s" % e
+        return
+
+    git_hooks = gitdir.Dir("hooks")
+    git_pre_commit_hook = git_hooks.File("pre-commit")
+    git_style_script = File("util/git-pre-commit.py")
+
+    if git_pre_commit_hook.exists():
+        return
+
+    print git_style_message,
+    try:
+        raw_input()
+    except:
+        print "Input exception, exiting scons.\n"
+        sys.exit(1)
+
+    if not git_hooks.exists():
+        mkdir(git_hooks.get_abspath())
+
+    # Use a relative symlink if the hooks live in the source directory
+    if git_pre_commit_hook.is_under(main.root):
+        script_path = os.path.relpath(
+            git_style_script.get_abspath(),
+            git_pre_commit_hook.Dir(".").get_abspath())
+    else:
+        script_path = git_style_script.get_abspath()
+
+    try:
+        os.symlink(script_path, git_pre_commit_hook.get_abspath())
+    except:
+        print "Error updating git pre-commit hook"
+        raise
+
+# Try to wire up git to the style hooks
+if not ignore_style and main.root.Entry(".git").exists():
+    install_git_style_hooks()
 
 ###################################################
 #
@@ -538,15 +649,12 @@ if main['GCC'] or main['CLANG']:
     # As gcc and clang share many flags, do the common parts here
     main.Append(CCFLAGS=['-pipe'])
     main.Append(CCFLAGS=['-fno-strict-aliasing'])
-    # Enable -Wall and then disable the few warnings that we
-    # consistently violate
-    main.Append(CCFLAGS=['-Wall', '-Wno-sign-compare', '-Wundef'])
-    # We always compile using C++11, but only gcc >= 4.7 and clang 3.1
-    # actually use that name, so we stick with c++0x
-    main.Append(CXXFLAGS=['-std=c++0x'])
-    # Add selected sanity checks from -Wextra
-    main.Append(CXXFLAGS=['-Wmissing-field-initializers',
-                          '-Woverloaded-virtual'])
+    # Enable -Wall and -Wextra and then disable the few warnings that
+    # we consistently violate
+    main.Append(CCFLAGS=['-Wall', '-Wundef', '-Wextra',
+                         '-Wno-sign-compare', '-Wno-unused-parameter'])
+    # We always compile using C++11
+    main.Append(CXXFLAGS=['-std=c++11'])
 else:
     print termcap.Yellow + termcap.Bold + 'Error' + termcap.Normal,
     print "Don't know what compiler options to use for your compiler."
@@ -567,67 +675,93 @@ else:
     Exit(1)
 
 if main['GCC']:
-    # Check for a supported version of gcc, >= 4.4 is needed for c++0x
-    # support. See http://gcc.gnu.org/projects/cxx0x.html for details
+    # Check for a supported version of gcc. >= 4.8 is chosen for its
+    # level of c++11 support. See
+    # http://gcc.gnu.org/projects/cxx0x.html for details.
     gcc_version = readCommand([main['CXX'], '-dumpversion'], exception=False)
-    if compareVersions(gcc_version, "4.4") < 0:
-        print 'Error: gcc version 4.4 or newer required.'
+    if compareVersions(gcc_version, "4.8") < 0:
+        print 'Error: gcc version 4.8 or newer required.'
         print '       Installed version:', gcc_version
         Exit(1)
 
     main['GCC_VERSION'] = gcc_version
 
-    # Check for versions with bugs
-    if not compareVersions(gcc_version, '4.4.1') or \
-       not compareVersions(gcc_version, '4.4.2'):
-        print 'Info: Tree vectorizer in GCC 4.4.1 & 4.4.2 is buggy, disabling.'
-        main.Append(CCFLAGS=['-fno-tree-vectorize'])
+    # gcc from version 4.8 and above generates "rep; ret" instructions
+    # to avoid performance penalties on certain AMD chips. Older
+    # assemblers detect this as an error, "Error: expecting string
+    # instruction after `rep'"
+    as_version_raw = readCommand([main['AS'], '-v', '/dev/null'],
+                                 exception=False).split()
 
-    # LTO support is only really working properly from 4.6 and beyond
-    if compareVersions(gcc_version, '4.6') >= 0:
-        # Add the appropriate Link-Time Optimization (LTO) flags
-        # unless LTO is explicitly turned off. Note that these flags
-        # are only used by the fast target.
-        if not GetOption('no_lto'):
-            # Pass the LTO flag when compiling to produce GIMPLE
-            # output, we merely create the flags here and only append
-            # them later/
-            main['LTO_CCFLAGS'] = ['-flto=%d' % GetOption('num_jobs')]
+    # version strings may contain extra distro-specific
+    # qualifiers, so play it safe and keep only what comes before
+    # the first hyphen
+    as_version = as_version_raw[-1].split('-')[0] if as_version_raw else None
 
-            # Use the same amount of jobs for LTO as we are running
-            # scons with, we hardcode the use of the linker plugin
-            # which requires either gold or GNU ld >= 2.21
-            main['LTO_LDFLAGS'] = ['-flto=%d' % GetOption('num_jobs'),
-                                   '-fuse-linker-plugin']
+    if not as_version or compareVersions(as_version, "2.23") < 0:
+        print termcap.Yellow + termcap.Bold + \
+            'Warning: This combination of gcc and binutils have' + \
+            ' known incompatibilities.\n' + \
+            '         If you encounter build problems, please update ' + \
+            'binutils to 2.23.' + \
+            termcap.Normal
+
+    # Make sure we warn if the user has requested to compile with the
+    # Undefined Benahvior Sanitizer and this version of gcc does not
+    # support it.
+    if GetOption('with_ubsan') and \
+            compareVersions(gcc_version, '4.9') < 0:
+        print termcap.Yellow + termcap.Bold + \
+            'Warning: UBSan is only supported using gcc 4.9 and later.' + \
+            termcap.Normal
+
+    # Add the appropriate Link-Time Optimization (LTO) flags
+    # unless LTO is explicitly turned off. Note that these flags
+    # are only used by the fast target.
+    if not GetOption('no_lto'):
+        # Pass the LTO flag when compiling to produce GIMPLE
+        # output, we merely create the flags here and only append
+        # them later
+        main['LTO_CCFLAGS'] = ['-flto=%d' % GetOption('num_jobs')]
+
+        # Use the same amount of jobs for LTO as we are running
+        # scons with
+        main['LTO_LDFLAGS'] = ['-flto=%d' % GetOption('num_jobs')]
 
     main.Append(TCMALLOC_CCFLAGS=['-fno-builtin-malloc', '-fno-builtin-calloc',
                                   '-fno-builtin-realloc', '-fno-builtin-free'])
 
+    # add option to check for undeclared overrides
+    if compareVersions(gcc_version, "5.0") > 0:
+        main.Append(CCFLAGS=['-Wno-error=suggest-override'])
+
 elif main['CLANG']:
-    # Check for a supported version of clang, >= 2.9 is needed to
-    # support similar features as gcc 4.4. See
+    # Check for a supported version of clang, >= 3.1 is needed to
+    # support similar features as gcc 4.8. See
     # http://clang.llvm.org/cxx_status.html for details
     clang_version_re = re.compile(".* version (\d+\.\d+)")
-    clang_version_match = clang_version_re.match(CXX_version)
+    clang_version_match = clang_version_re.search(CXX_version)
     if (clang_version_match):
         clang_version = clang_version_match.groups()[0]
-        if compareVersions(clang_version, "2.9") < 0:
-            print 'Error: clang version 2.9 or newer required.'
+        if compareVersions(clang_version, "3.1") < 0:
+            print 'Error: clang version 3.1 or newer required.'
             print '       Installed version:', clang_version
             Exit(1)
     else:
         print 'Error: Unable to determine clang version.'
         Exit(1)
 
-    # clang has a few additional warnings that we disable,
-    # tautological comparisons are allowed due to unsigned integers
-    # being compared to constants that happen to be 0, and extraneous
+    # clang has a few additional warnings that we disable, extraneous
     # parantheses are allowed due to Ruby's printing of the AST,
     # finally self assignments are allowed as the generated CPU code
     # is relying on this
-    main.Append(CCFLAGS=['-Wno-tautological-compare',
-                         '-Wno-parentheses',
-                         '-Wno-self-assign'])
+    main.Append(CCFLAGS=['-Wno-parentheses',
+                         '-Wno-self-assign',
+                         # Some versions of libstdc++ (4.8?) seem to
+                         # use struct hash and class hash
+                         # interchangeably.
+                         '-Wno-mismatched-tags',
+                         ])
 
     main.Append(TCMALLOC_CCFLAGS=['-fno-builtin'])
 
@@ -726,26 +860,36 @@ if len(swig_version) < 3 or \
     print 'Error determining SWIG version.'
     Exit(1)
 
-min_swig_version = '1.3.34'
+min_swig_version = '2.0.4'
 if compareVersions(swig_version[2], min_swig_version) < 0:
     print 'Error: SWIG version', min_swig_version, 'or newer required.'
     print '       Installed version:', swig_version[2]
     Exit(1)
 
-# Older versions of swig do not play well with more recent versions of
-# gcc due to assumptions on implicit includes (cstddef) and use of
-# namespaces
-if main['GCC'] and compareVersions(gcc_version, '4.6') > 0 and \
-        compareVersions(swig_version[2], '2') < 0:
-    print '\n' + termcap.Yellow + termcap.Bold + \
-        'Warning: SWIG 1.x cause issues with gcc 4.6 and later.\n' + \
-        termcap.Normal + \
-        'Use SWIG 2.x to avoid assumptions on implicit includes\n' + \
-        'and use of namespaces\n'
+# Check for known incompatibilities. The standard library shipped with
+# gcc >= 4.9 does not play well with swig versions prior to 3.0
+if main['GCC'] and compareVersions(gcc_version, '4.9') >= 0 and \
+        compareVersions(swig_version[2], '3.0') < 0:
+    print termcap.Yellow + termcap.Bold + \
+        'Warning: This combination of gcc and swig have' + \
+        ' known incompatibilities.\n' + \
+        '         If you encounter build problems, please update ' + \
+        'swig to 3.0 or later.' + \
+        termcap.Normal
 
 # Set up SWIG flags & scanner
 swig_flags=Split('-c++ -python -modern -templatereduce $_CPPINCFLAGS')
 main.Append(SWIGFLAGS=swig_flags)
+
+# Check for 'timeout' from GNU coreutils. If present, regressions will
+# be run with a time limit. We require version 8.13 since we rely on
+# support for the '--foreground' option.
+timeout_lines = readCommand(['timeout', '--version'],
+                            exception='').splitlines()
+# Get the first line and tokenize it
+timeout_version = timeout_lines[0].split() if timeout_lines else []
+main['TIMEOUT'] =  timeout_version and \
+    compareVersions(timeout_version[-1], '8.13') >= 0
 
 # filter out all existing swig scanners, they mess up the dependency
 # stuff for some reason
@@ -767,32 +911,6 @@ scanners.append(CPPScanner("SwigScan", [ ".i" ], "CPPPATH", swig_inc_re))
 
 # replace the scanners list that has what we want
 main['SCANNERS'] = scanners
-
-# Add a custom Check function to the Configure context so that we can
-# figure out if the compiler adds leading underscores to global
-# variables.  This is needed for the autogenerated asm files that we
-# use for embedding the python code.
-def CheckLeading(context):
-    context.Message("Checking for leading underscore in global variables...")
-    # 1) Define a global variable called x from asm so the C compiler
-    #    won't change the symbol at all.
-    # 2) Declare that variable.
-    # 3) Use the variable
-    #
-    # If the compiler prepends an underscore, this will successfully
-    # link because the external symbol 'x' will be called '_x' which
-    # was defined by the asm statement.  If the compiler does not
-    # prepend an underscore, this will not successfully link because
-    # '_x' will have been defined by assembly, while the C portion of
-    # the code will be trying to use 'x'
-    ret = context.TryLink('''
-        asm(".globl _x; _x: .byte 0");
-        extern int x;
-        int main() { return x; }
-        ''', extension=".c")
-    context.env.Append(LEADING_UNDERSCORE=ret)
-    context.Result(ret)
-    return ret
 
 # Add a custom Check function to test for structure members.
 def CheckMember(context, include, decl, member, include_quotes="<>"):
@@ -820,13 +938,8 @@ conf = Configure(main,
                  conf_dir = joinpath(build_root, '.scons_config'),
                  log_file = joinpath(build_root, 'scons_config.log'),
                  custom_tests = {
-        'CheckLeading' : CheckLeading,
         'CheckMember' : CheckMember,
         })
-
-# Check for leading underscores.  Don't really need to worry either
-# way so don't need to check the return code.
-conf.CheckLeading()
 
 # Check if we should compile a 64 bit binary on Mac OS X/Darwin
 try:
@@ -865,41 +978,50 @@ if main['M5_BUILD_CACHE']:
     print 'Using build cache located at', main['M5_BUILD_CACHE']
     CacheDir(main['M5_BUILD_CACHE'])
 
-# Find Python include and library directories for embedding the
-# interpreter. We rely on python-config to resolve the appropriate
-# includes and linker flags. ParseConfig does not seem to understand
-# the more exotic linker flags such as -Xlinker and -export-dynamic so
-# we add them explicitly below. If you want to link in an alternate
-# version of python, see above for instructions on how to invoke
-# scons with the appropriate PATH set.
-py_includes = readCommand(['python-config', '--includes'],
-                          exception='').split()
-# Strip the -I from the include folders before adding them to the
-# CPPPATH
-main.Append(CPPPATH=map(lambda inc: inc[2:], py_includes))
+if not GetOption('without_python'):
+    # Find Python include and library directories for embedding the
+    # interpreter. We rely on python-config to resolve the appropriate
+    # includes and linker flags. ParseConfig does not seem to understand
+    # the more exotic linker flags such as -Xlinker and -export-dynamic so
+    # we add them explicitly below. If you want to link in an alternate
+    # version of python, see above for instructions on how to invoke
+    # scons with the appropriate PATH set.
+    #
+    # First we check if python2-config exists, else we use python-config
+    python_config = readCommand(['which', 'python2-config'],
+                                exception='').strip()
+    if not os.path.exists(python_config):
+        python_config = readCommand(['which', 'python-config'],
+                                    exception='').strip()
+    py_includes = readCommand([python_config, '--includes'],
+                              exception='').split()
+    # Strip the -I from the include folders before adding them to the
+    # CPPPATH
+    main.Append(CPPPATH=map(lambda inc: inc[2:], py_includes))
 
-# Read the linker flags and split them into libraries and other link
-# flags. The libraries are added later through the call the CheckLib.
-py_ld_flags = readCommand(['python-config', '--ldflags'], exception='').split()
-py_libs = []
-for lib in py_ld_flags:
-     if not lib.startswith('-l'):
-         main.Append(LINKFLAGS=[lib])
-     else:
-         lib = lib[2:]
-         if lib not in py_libs:
-             py_libs.append(lib)
+    # Read the linker flags and split them into libraries and other link
+    # flags. The libraries are added later through the call the CheckLib.
+    py_ld_flags = readCommand([python_config, '--ldflags'],
+        exception='').split()
+    py_libs = []
+    for lib in py_ld_flags:
+         if not lib.startswith('-l'):
+             main.Append(LINKFLAGS=[lib])
+         else:
+             lib = lib[2:]
+             if lib not in py_libs:
+                 py_libs.append(lib)
 
-# verify that this stuff works
-if not conf.CheckHeader('Python.h', '<>'):
-    print "Error: can't find Python.h header in", py_includes
-    print "Install Python headers (package python-dev on Ubuntu and RedHat)"
-    Exit(1)
-
-for lib in py_libs:
-    if not conf.CheckLib(lib):
-        print "Error: can't find library %s required by python" % lib
+    # verify that this stuff works
+    if not conf.CheckHeader('Python.h', '<>'):
+        print "Error: can't find Python.h header in", py_includes
+        print "Install Python headers (package python-dev on Ubuntu and RedHat)"
         Exit(1)
+
+    for lib in py_libs:
+        if not conf.CheckLib(lib):
+            print "Error: can't find library %s required by python" % lib
+            Exit(1)
 
 # On Solaris you need to use libsocket for socket ops
 if not conf.CheckLibWithHeader(None, 'sys/socket.h', 'C++', 'accept(0,0,0);'):
@@ -942,15 +1064,31 @@ have_posix_timers = \
     conf.CheckLibWithHeader([None, 'rt'], [ 'time.h', 'signal.h' ], 'C',
                             'timer_create(CLOCK_MONOTONIC, NULL, NULL);')
 
-if conf.CheckLib('tcmalloc'):
-    main.Append(CCFLAGS=main['TCMALLOC_CCFLAGS'])
-elif conf.CheckLib('tcmalloc_minimal'):
-    main.Append(CCFLAGS=main['TCMALLOC_CCFLAGS'])
-else:
+if not GetOption('without_tcmalloc'):
+    if conf.CheckLib('tcmalloc'):
+        main.Append(CCFLAGS=main['TCMALLOC_CCFLAGS'])
+    elif conf.CheckLib('tcmalloc_minimal'):
+        main.Append(CCFLAGS=main['TCMALLOC_CCFLAGS'])
+    else:
+        print termcap.Yellow + termcap.Bold + \
+              "You can get a 12% performance improvement by "\
+              "installing tcmalloc (libgoogle-perftools-dev package "\
+              "on Ubuntu or RedHat)." + termcap.Normal
+
+
+# Detect back trace implementations. The last implementation in the
+# list will be used by default.
+backtrace_impls = [ "none" ]
+
+if conf.CheckLibWithHeader(None, 'execinfo.h', 'C',
+                           'backtrace_symbols_fd((void*)0, 0, 0);'):
+    backtrace_impls.append("glibc")
+
+if backtrace_impls[-1] == "none":
+    default_backtrace_impl = "none"
     print termcap.Yellow + termcap.Bold + \
-          "You can get a 12% performance improvement by installing tcmalloc "\
-          "(libgoogle-perftools-dev package on Ubuntu or RedHat)." + \
-          termcap.Normal
+        "No suitable back trace implementation found." + \
+        termcap.Normal
 
 if not have_posix_clock:
     print "Can't find library for POSIX clocks."
@@ -965,18 +1103,19 @@ if not have_fenv:
 # we rely on exists since version 2.6.36 of the kernel, but somehow
 # the KVM_API_VERSION does not reflect the change. We test for one of
 # the types as a fall back.
-have_kvm = conf.CheckHeader('linux/kvm.h', '<>') and \
-    conf.CheckTypeSize('struct kvm_xsave', '#include <linux/kvm.h>') != 0
+have_kvm = conf.CheckHeader('linux/kvm.h', '<>')
 if not have_kvm:
     print "Info: Compatible header file <linux/kvm.h> not found, " \
         "disabling KVM support."
 
+# x86 needs support for xsave. We test for the structure here since we
+# won't be able to run new tests by the time we know which ISA we're
+# targeting.
+have_kvm_xsave = conf.CheckTypeSize('struct kvm_xsave',
+                                    '#include <linux/kvm.h>') != 0
+
 # Check if the requested target ISA is compatible with the host
 def is_isa_kvm_compatible(isa):
-    isa_comp_table = {
-        "arm" : ( "armv7l" ),
-        "x86" : ( "x86_64" ),
-        }
     try:
         import platform
         host_isa = platform.machine()
@@ -984,7 +1123,24 @@ def is_isa_kvm_compatible(isa):
         print "Warning: Failed to determine host ISA."
         return False
 
-    return host_isa in isa_comp_table.get(isa, [])
+    if not have_posix_timers:
+        print "Warning: Can not enable KVM, host seems to lack support " \
+            "for POSIX timers"
+        return False
+
+    if isa == "arm":
+        return host_isa in ( "armv7l", "aarch64" )
+    elif isa == "x86":
+        if host_isa != "x86_64":
+            return False
+
+        if not have_kvm_xsave:
+            print "KVM on x86 requires xsave support in kernel headers."
+            return False
+
+        return True
+    else:
+        return False
 
 
 # Check if the exclude_host attribute is available. We want this to
@@ -1006,7 +1162,9 @@ main = conf.Finish()
 
 # Define the universe of supported ISAs
 all_isa_list = [ ]
+all_gpu_isa_list = [ ]
 Export('all_isa_list')
+Export('all_gpu_isa_list')
 
 class CpuModel(object):
     '''The CpuModel class encapsulates everything the ISA parser needs to
@@ -1014,17 +1172,10 @@ class CpuModel(object):
 
     # Dict of available CPU model objects.  Accessible as CpuModel.dict.
     dict = {}
-    list = []
-    defaults = []
 
     # Constructor.  Automatically adds models to CpuModel.dict.
-    def __init__(self, name, filename, includes, strings, default=False):
+    def __init__(self, name, default=False):
         self.name = name           # name of model
-        self.filename = filename   # filename for output exec code
-        self.includes = includes   # include files needed in exec file
-        # The 'strings' dict holds all the per-CPU symbols we can
-        # substitute into templates etc.
-        self.strings = strings
 
         # This cpu is enabled by default
         self.default = default
@@ -1033,7 +1184,6 @@ class CpuModel(object):
         if name in CpuModel.dict:
             raise AttributeError, "CpuModel '%s' already registered" % name
         CpuModel.dict[name] = self
-        CpuModel.list.append(name)
 
 Export('CpuModel')
 
@@ -1057,7 +1207,7 @@ Export('slicc_includes')
 
 # Walk the tree and execute all SConsopts scripts that wil add to the
 # above variables
-if not GetOption('verbose'):
+if GetOption('verbose'):
     print "Reading SConsopts"
 for bdir in [ base_dir ] + extras_dir_list:
     if not isdir(bdir):
@@ -1070,12 +1220,14 @@ for bdir in [ base_dir ] + extras_dir_list:
             SConscript(joinpath(root, 'SConsopts'))
 
 all_isa_list.sort()
+all_gpu_isa_list.sort()
 
 sticky_vars.AddVariables(
     EnumVariable('TARGET_ISA', 'Target ISA', 'alpha', all_isa_list),
+    EnumVariable('TARGET_GPU_ISA', 'Target GPU ISA', 'hsail', all_gpu_isa_list),
     ListVariable('CPU_MODELS', 'CPU models',
                  sorted(n for n,m in CpuModel.dict.iteritems() if m.default),
-                 sorted(CpuModel.list)),
+                 sorted(CpuModel.dict.keys())),
     BoolVariable('EFENCE', 'Link with Electric Fence malloc debugger',
                  False),
     BoolVariable('SS_COMPATIBLE_FP',
@@ -1088,14 +1240,17 @@ sticky_vars.AddVariables(
     BoolVariable('USE_FENV', 'Use <fenv.h> IEEE mode control', have_fenv),
     BoolVariable('CP_ANNOTATE', 'Enable critical path annotation capability', False),
     BoolVariable('USE_KVM', 'Enable hardware virtualized (KVM) CPU models', have_kvm),
+    BoolVariable('BUILD_GPU', 'Build the compute-GPU model', False),
     EnumVariable('PROTOCOL', 'Coherence protocol for Ruby', 'None',
                   all_protocols),
+    EnumVariable('BACKTRACE_IMPL', 'Post-mortem dump implementation',
+                 backtrace_impls[-1], backtrace_impls)
     )
 
 # These variables get exported to #defines in config/*.hh (see src/SConscript).
-export_vars += ['USE_FENV', 'SS_COMPATIBLE_FP', 'TARGET_ISA', 'CP_ANNOTATE',
-                'USE_POSIX_CLOCK', 'PROTOCOL', 'HAVE_PROTOBUF',
-                'HAVE_PERF_ATTR_EXCLUDE_HOST']
+export_vars += ['USE_FENV', 'SS_COMPATIBLE_FP', 'TARGET_ISA', 'TARGET_GPU_ISA',
+                'CP_ANNOTATE', 'USE_POSIX_CLOCK', 'USE_KVM', 'PROTOCOL',
+                'HAVE_PROTOBUF', 'HAVE_PERF_ATTR_EXCLUDE_HOST']
 
 ###################################################
 #
@@ -1142,9 +1297,9 @@ main.Append(BUILDERS = { 'ConfigFile' : config_builder })
 main.SConscript('ext/libelf/SConscript',
                 variant_dir = joinpath(build_root, 'libelf'))
 
-# gzstream build is shared across all configs in the build root.
-main.SConscript('ext/gzstream/SConscript',
-                variant_dir = joinpath(build_root, 'gzstream'))
+# iostream3 build is shared across all configs in the build root.
+main.SConscript('ext/iostream3/SConscript',
+                variant_dir = joinpath(build_root, 'iostream3'))
 
 # libfdt build is shared across all configs in the build root.
 main.SConscript('ext/libfdt/SConscript',
@@ -1154,6 +1309,18 @@ main.SConscript('ext/libfdt/SConscript',
 main.SConscript('ext/fputils/SConscript',
                 variant_dir = joinpath(build_root, 'fputils'))
 
+# DRAMSim2 build is shared across all configs in the build root.
+main.SConscript('ext/dramsim2/SConscript',
+                variant_dir = joinpath(build_root, 'dramsim2'))
+
+# DRAMPower build is shared across all configs in the build root.
+main.SConscript('ext/drampower/SConscript',
+                variant_dir = joinpath(build_root, 'drampower'))
+
+# nomali build is shared across all configs in the build root.
+main.SConscript('ext/nomali/SConscript',
+                variant_dir = joinpath(build_root, 'nomali'))
+
 ###################################################
 #
 # This function is used to set up a directory with switching headers
@@ -1161,16 +1328,22 @@ main.SConscript('ext/fputils/SConscript',
 ###################################################
 
 main['ALL_ISA_LIST'] = all_isa_list
+main['ALL_GPU_ISA_LIST'] = all_gpu_isa_list
+all_isa_deps = {}
 def make_switching_dir(dname, switch_headers, env):
     # Generate the header.  target[0] is the full path of the output
     # header to generate.  'source' is a dummy variable, since we get the
     # list of ISAs from env['ALL_ISA_LIST'].
     def gen_switch_hdr(target, source, env):
         fname = str(target[0])
-        f = open(fname, 'w')
         isa = env['TARGET_ISA'].lower()
-        print >>f, '#include "%s/%s/%s"' % (dname, isa, basename(fname))
-        f.close()
+        try:
+            f = open(fname, 'w')
+            print >>f, '#include "%s/%s/%s"' % (dname, isa, basename(fname))
+            f.close()
+        except IOError:
+            print "Failed to create %s" % fname
+            raise
 
     # Build SCons Action object. 'varlist' specifies env vars that this
     # action depends on; when env['ALL_ISA_LIST'] changes these actions
@@ -1181,7 +1354,65 @@ def make_switching_dir(dname, switch_headers, env):
     # Instantiate actions for each header
     for hdr in switch_headers:
         env.Command(hdr, [], switch_hdr_action)
+
+    isa_target = Dir('.').up().name.lower().replace('_', '-')
+    env['PHONY_BASE'] = '#'+isa_target
+    all_isa_deps[isa_target] = None
+
 Export('make_switching_dir')
+
+def make_gpu_switching_dir(dname, switch_headers, env):
+    # Generate the header.  target[0] is the full path of the output
+    # header to generate.  'source' is a dummy variable, since we get the
+    # list of ISAs from env['ALL_ISA_LIST'].
+    def gen_switch_hdr(target, source, env):
+        fname = str(target[0])
+
+        isa = env['TARGET_GPU_ISA'].lower()
+
+        try:
+            f = open(fname, 'w')
+            print >>f, '#include "%s/%s/%s"' % (dname, isa, basename(fname))
+            f.close()
+        except IOError:
+            print "Failed to create %s" % fname
+            raise
+
+    # Build SCons Action object. 'varlist' specifies env vars that this
+    # action depends on; when env['ALL_ISA_LIST'] changes these actions
+    # should get re-executed.
+    switch_hdr_action = MakeAction(gen_switch_hdr,
+                          Transform("GENERATE"), varlist=['ALL_ISA_GPU_LIST'])
+
+    # Instantiate actions for each header
+    for hdr in switch_headers:
+        env.Command(hdr, [], switch_hdr_action)
+
+Export('make_gpu_switching_dir')
+
+# all-isas -> all-deps -> all-environs -> all_targets
+main.Alias('#all-isas', [])
+main.Alias('#all-deps', '#all-isas')
+
+# Dummy target to ensure all environments are created before telling
+# SCons what to actually make (the command line arguments).  We attach
+# them to the dependence graph after the environments are complete.
+ORIG_BUILD_TARGETS = list(BUILD_TARGETS) # force a copy; gets closure to work.
+def environsComplete(target, source, env):
+    for t in ORIG_BUILD_TARGETS:
+        main.Depends('#all-targets', t)
+
+# Each build/* switching_dir attaches its *-environs target to #all-environs.
+main.Append(BUILDERS = {'CompleteEnvirons' :
+                        Builder(action=MakeAction(environsComplete, None))})
+main.CompleteEnvirons('#all-environs', [])
+
+def doNothing(**ignored): pass
+main.Append(BUILDERS = {'Dummy': Builder(action=MakeAction(doNothing, None))})
+
+# The final target to which all the original targets ultimately get attached.
+main.Dummy('#all-targets', '#all-environs')
+BUILD_TARGETS[:] = ['#all-targets']
 
 ###################################################
 #
@@ -1190,7 +1421,8 @@ Export('make_switching_dir')
 ###################################################
 
 for variant_path in variant_paths:
-    print "Building in", variant_path
+    if not GetOption('silent'):
+        print "Building in", variant_path
 
     # Make a copy of the build-root environment to use for this config.
     env = main.Clone()
@@ -1208,7 +1440,8 @@ for variant_path in variant_paths:
     current_vars_file = joinpath(build_root, 'variables', variant_dir)
     if isfile(current_vars_file):
         sticky_vars.files.append(current_vars_file)
-        print "Using saved variables file %s" % current_vars_file
+        if not GetOption('silent'):
+            print "Using saved variables file %s" % current_vars_file
     else:
         # Build dir-specific variables file doesn't exist.
 
@@ -1264,10 +1497,6 @@ for variant_path in variant_paths:
         if not have_kvm:
             print "Warning: Can not enable KVM, host seems to lack KVM support"
             env['USE_KVM'] = False
-        elif not have_posix_timers:
-            print "Warning: Can not enable KVM, host seems to lack support " \
-                "for POSIX timers"
-            env['USE_KVM'] = False
         elif not is_isa_kvm_compatible(env['TARGET_ISA']):
             print "Info: KVM support disabled due to unsupported host and " \
                 "target ISA combination"
@@ -1289,14 +1518,25 @@ for variant_path in variant_paths:
     # The src/SConscript file sets up the build rules in 'env' according
     # to the configured variables.  It returns a list of environments,
     # one for each variant build (debug, opt, etc.)
-    envList = SConscript('src/SConscript', variant_dir = variant_path,
-                         exports = 'env')
+    SConscript('src/SConscript', variant_dir = variant_path, exports = 'env')
 
-    # Set up the regression tests for each build.
-    for e in envList:
-        SConscript('tests/SConscript',
-                   variant_dir = joinpath(variant_path, 'tests', e.Label),
-                   exports = { 'env' : e }, duplicate = False)
+def pairwise(iterable):
+    "s -> (s0,s1), (s1,s2), (s2, s3), ..."
+    a, b = itertools.tee(iterable)
+    b.next()
+    return itertools.izip(a, b)
+
+# Create false dependencies so SCons will parse ISAs, establish
+# dependencies, and setup the build Environments serially. Either
+# SCons (likely) and/or our SConscripts (possibly) cannot cope with -j
+# greater than 1. It appears to be standard race condition stuff; it
+# doesn't always fail, but usually, and the behaviors are different.
+# Every time I tried to remove this, builds would fail in some
+# creative new way. So, don't do that. You'll want to, though, because
+# tests/SConscript takes a long time to make its Environments.
+for t1, t2 in pairwise(sorted(all_isa_deps.iterkeys())):
+    main.Depends('#%s-deps'     % t2, '#%s-deps'     % t1)
+    main.Depends('#%s-environs' % t2, '#%s-environs' % t1)
 
 # base help text
 Help('''

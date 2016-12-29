@@ -52,10 +52,12 @@
 #include "base/statistics.hh"
 #include "cpu/base.hh"
 #include "cpu/base_dyn_inst.hh"
+#include "cpu/exec_context.hh"
 #include "cpu/pc_event.hh"
 #include "cpu/simple_thread.hh"
 #include "cpu/static_inst.hh"
 #include "debug/Checker.hh"
+#include "mem/request.hh"
 #include "params/CheckerCPU.hh"
 #include "sim/eventq.hh"
 
@@ -86,7 +88,7 @@ class Request;
  * checker to be able to correctly verify instructions, even with
  * external accesses to the ThreadContext that change state.
  */
-class CheckerCPU : public BaseCPU
+class CheckerCPU : public BaseCPU, public ExecContext
 {
   protected:
     typedef TheISA::MachInst MachInst;
@@ -97,7 +99,7 @@ class CheckerCPU : public BaseCPU
     /** id attached to all issued requests */
     MasterID masterId;
   public:
-    virtual void init();
+    void init() override;
 
     typedef CheckerCPUParams Params;
     CheckerCPU(Params *p);
@@ -109,7 +111,7 @@ class CheckerCPU : public BaseCPU
 
     void setDcachePort(MasterPort *dcache_port);
 
-    MasterPort &getDataPort()
+    MasterPort &getDataPort() override
     {
         // the checker does not have ports on its own so return the
         // data port of the actual CPU core
@@ -117,7 +119,7 @@ class CheckerCPU : public BaseCPU
         return *dcachePort;
     }
 
-    MasterPort &getInstPort()
+    MasterPort &getInstPort() override
     {
         // the checker does not have ports on its own so return the
         // data port of the actual CPU core
@@ -174,12 +176,12 @@ class CheckerCPU : public BaseCPU
     TheISA::TLB* getITBPtr() { return itb; }
     TheISA::TLB* getDTBPtr() { return dtb; }
 
-    virtual Counter totalInsts() const
+    virtual Counter totalInsts() const override
     {
         return 0;
     }
 
-    virtual Counter totalOps() const
+    virtual Counter totalOps() const override
     {
         return 0;
     }
@@ -188,13 +190,15 @@ class CheckerCPU : public BaseCPU
     Counter numLoad;
     Counter startNumLoad;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     // These functions are only used in CPU models that split
     // effective address computation from the actual memory access.
-    void setEA(Addr EA) { panic("SimpleCPU::setEA() not implemented\n"); }
-    Addr getEA()        { panic("SimpleCPU::getEA() not implemented\n"); }
+    void setEA(Addr EA) override
+    { panic("CheckerCPU::setEA() not implemented\n"); }
+    Addr getEA() const  override
+    { panic("CheckerCPU::getEA() not implemented\n"); }
 
     // The register accessor methods provide the index of the
     // instruction's operand (e.g., 0 or 1), not the architectural
@@ -207,24 +211,25 @@ class CheckerCPU : public BaseCPU
     // storage (which is pretty hard to imagine they would have reason
     // to do).
 
-    uint64_t readIntRegOperand(const StaticInst *si, int idx)
+    IntReg readIntRegOperand(const StaticInst *si, int idx) override
     {
         return thread->readIntReg(si->srcRegIdx(idx));
     }
 
-    FloatReg readFloatRegOperand(const StaticInst *si, int idx)
+    FloatReg readFloatRegOperand(const StaticInst *si, int idx) override
     {
         int reg_idx = si->srcRegIdx(idx) - TheISA::FP_Reg_Base;
         return thread->readFloatReg(reg_idx);
     }
 
-    FloatRegBits readFloatRegOperandBits(const StaticInst *si, int idx)
+    FloatRegBits readFloatRegOperandBits(const StaticInst *si,
+                                         int idx) override
     {
         int reg_idx = si->srcRegIdx(idx) - TheISA::FP_Reg_Base;
         return thread->readFloatRegBits(reg_idx);
     }
 
-    uint64_t readCCRegOperand(const StaticInst *si, int idx)
+    CCReg readCCRegOperand(const StaticInst *si, int idx) override
     {
         int reg_idx = si->srcRegIdx(idx) - TheISA::CC_Reg_Base;
         return thread->readCCReg(reg_idx);
@@ -238,13 +243,15 @@ class CheckerCPU : public BaseCPU
         result.push(instRes);
     }
 
-    void setIntRegOperand(const StaticInst *si, int idx, uint64_t val)
+    void setIntRegOperand(const StaticInst *si, int idx,
+                          IntReg val) override
     {
         thread->setIntReg(si->destRegIdx(idx), val);
         setResult<uint64_t>(val);
     }
 
-    void setFloatRegOperand(const StaticInst *si, int idx, FloatReg val)
+    void setFloatRegOperand(const StaticInst *si, int idx,
+                            FloatReg val) override
     {
         int reg_idx = si->destRegIdx(idx) - TheISA::FP_Reg_Base;
         thread->setFloatReg(reg_idx, val);
@@ -252,28 +259,28 @@ class CheckerCPU : public BaseCPU
     }
 
     void setFloatRegOperandBits(const StaticInst *si, int idx,
-                                FloatRegBits val)
+                                FloatRegBits val) override
     {
         int reg_idx = si->destRegIdx(idx) - TheISA::FP_Reg_Base;
         thread->setFloatRegBits(reg_idx, val);
         setResult<uint64_t>(val);
     }
 
-    void setCCRegOperand(const StaticInst *si, int idx, uint64_t val)
+    void setCCRegOperand(const StaticInst *si, int idx, CCReg val) override
     {
         int reg_idx = si->destRegIdx(idx) - TheISA::CC_Reg_Base;
         thread->setCCReg(reg_idx, val);
         setResult<uint64_t>(val);
     }
 
-    bool readPredicate() { return thread->readPredicate(); }
-    void setPredicate(bool val)
+    bool readPredicate() override { return thread->readPredicate(); }
+    void setPredicate(bool val) override
     {
         thread->setPredicate(val);
     }
 
-    TheISA::PCState pcState() { return thread->pcState(); }
-    void pcState(const TheISA::PCState &val)
+    TheISA::PCState pcState() const override { return thread->pcState(); }
+    void pcState(const TheISA::PCState &val) override
     {
         DPRINTF(Checker, "Changing PC to %s, old PC %s.\n",
                          val, thread->pcState());
@@ -284,49 +291,51 @@ class CheckerCPU : public BaseCPU
     MicroPC microPC() { return thread->microPC(); }
     //////////////////////////////////////////
 
-    MiscReg readMiscRegNoEffect(int misc_reg)
+    MiscReg readMiscRegNoEffect(int misc_reg) const
     {
         return thread->readMiscRegNoEffect(misc_reg);
     }
 
-    MiscReg readMiscReg(int misc_reg)
+    MiscReg readMiscReg(int misc_reg) override
     {
         return thread->readMiscReg(misc_reg);
     }
 
     void setMiscRegNoEffect(int misc_reg, const MiscReg &val)
     {
+        DPRINTF(Checker, "Setting misc reg %d with no effect to check later\n", misc_reg);
         miscRegIdxs.push(misc_reg);
         return thread->setMiscRegNoEffect(misc_reg, val);
     }
 
-    void setMiscReg(int misc_reg, const MiscReg &val)
+    void setMiscReg(int misc_reg, const MiscReg &val) override
     {
+        DPRINTF(Checker, "Setting misc reg %d with effect to check later\n", misc_reg);
         miscRegIdxs.push(misc_reg);
         return thread->setMiscReg(misc_reg, val);
     }
 
-    MiscReg readMiscRegOperand(const StaticInst *si, int idx)
+    MiscReg readMiscRegOperand(const StaticInst *si, int idx) override
     {
         int reg_idx = si->srcRegIdx(idx) - TheISA::Misc_Reg_Base;
         return thread->readMiscReg(reg_idx);
     }
 
-    void setMiscRegOperand(
-            const StaticInst *si, int idx, const MiscReg &val)
+    void setMiscRegOperand(const StaticInst *si, int idx,
+                           const MiscReg &val) override
     {
         int reg_idx = si->destRegIdx(idx) - TheISA::Misc_Reg_Base;
-        return thread->setMiscReg(reg_idx, val);
+        return this->setMiscReg(reg_idx, val);
     }
 
 #if THE_ISA == MIPS_ISA
-    uint64_t readRegOtherThread(int misc_reg)
+    MiscReg readRegOtherThread(int misc_reg, ThreadID tid) override
     {
         panic("MIPS MT not defined for CheckerCPU.\n");
         return 0;
     }
 
-    void setRegOtherThread(int misc_reg, const TheISA::MiscReg &val)
+    void setRegOtherThread(int misc_reg, MiscReg val, ThreadID tid) override
     {
         panic("MIPS MT not defined for CheckerCPU.\n");
     }
@@ -340,11 +349,20 @@ class CheckerCPU : public BaseCPU
        newPCState = val;
     }
 
-    void demapPage(Addr vaddr, uint64_t asn)
+    void demapPage(Addr vaddr, uint64_t asn) override
     {
         this->itb->demapPage(vaddr, asn);
         this->dtb->demapPage(vaddr, asn);
     }
+
+    // monitor/mwait funtions
+    void armMonitor(Addr address) override
+    { BaseCPU::armMonitor(0, address); }
+    bool mwait(PacketPtr pkt) override { return BaseCPU::mwait(0, pkt); }
+    void mwaitAtomic(ThreadContext *tc) override
+    { return BaseCPU::mwaitAtomic(0, tc, thread->dtb); }
+    AddressMonitor *getAddrMonitor() override
+    { return BaseCPU::getCpuAddrMonitor(0); }
 
     void demapInstPage(Addr vaddr, uint64_t asn)
     {
@@ -356,20 +374,26 @@ class CheckerCPU : public BaseCPU
         this->dtb->demapPage(vaddr, asn);
     }
 
-    Fault readMem(Addr addr, uint8_t *data, unsigned size, unsigned flags);
-    Fault writeMem(uint8_t *data, unsigned size,
-                   Addr addr, unsigned flags, uint64_t *res);
+    Fault readMem(Addr addr, uint8_t *data, unsigned size,
+                  Request::Flags flags) override;
+    Fault writeMem(uint8_t *data, unsigned size, Addr addr,
+                   Request::Flags flags, uint64_t *res) override;
 
-    void setStCondFailures(unsigned sc_failures)
+    unsigned int readStCondFailures() const override {
+        return thread->readStCondFailures();
+    }
+
+    void setStCondFailures(unsigned int sc_failures) override
     {}
     /////////////////////////////////////////////////////
 
-    Fault hwrei() { return thread->hwrei(); }
-    bool simPalCheck(int palFunc) { return thread->simPalCheck(palFunc); }
-    void wakeup() { }
+    Fault hwrei() override { return thread->hwrei(); }
+    bool simPalCheck(int palFunc) override
+    { return thread->simPalCheck(palFunc); }
+    void wakeup(ThreadID tid) override { }
     // Assume that the normal CPU's call to syscall was successful.
     // The checker's state would have already been updated by the syscall.
-    void syscall(uint64_t callnum) { }
+    void syscall(int64_t callnum) override { }
 
     void handleError()
     {
@@ -382,7 +406,7 @@ class CheckerCPU : public BaseCPU
 
     void dumpAndExit();
 
-    ThreadContext *tcBase() { return tc; }
+    ThreadContext *tcBase() override { return tc; }
     SimpleThread *threadBase() { return thread; }
 
     Result unverifiedResult;
@@ -392,7 +416,6 @@ class CheckerCPU : public BaseCPU
     bool changedPC;
     bool willChangePC;
     TheISA::PCState newPCState;
-    bool changedNextPC;
     bool exitOnError;
     bool updateOnError;
     bool warnOnlyOnLoadError;
@@ -420,7 +443,7 @@ class Checker : public CheckerCPU
     void switchOut();
     void takeOverFrom(BaseCPU *oldCPU);
 
-    void advancePC(Fault fault);
+    void advancePC(const Fault &fault);
 
     void verify(DynInstPtr &inst);
 

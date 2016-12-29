@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 ARM Limited
+ * Copyright (c) 2011, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -50,6 +50,7 @@
 #include "base/types.hh"
 #include "cpu/pred/bpred_unit.hh"
 #include "cpu/pred/sat_counter.hh"
+#include "params/TournamentBP.hh"
 
 /**
  * Implements a tournament branch predictor, hopefully identical to the one
@@ -66,7 +67,7 @@ class TournamentBP : public BPredUnit
     /**
      * Default branch predictor constructor.
      */
-    TournamentBP(const Params *params);
+    TournamentBP(const TournamentBPParams *params);
 
     /**
      * Looks up the given address in the branch predictor and returns
@@ -76,7 +77,7 @@ class TournamentBP : public BPredUnit
      * @param bp_history Pointer that will be set to the BPHistory object.
      * @return Whether or not the branch is taken.
      */
-    bool lookup(Addr branch_addr, void * &bp_history);
+    bool lookup(ThreadID tid, Addr branch_addr, void * &bp_history);
 
     /**
      * Records that there was an unconditional branch, and modifies
@@ -84,7 +85,7 @@ class TournamentBP : public BPredUnit
      * global history stored in it.
      * @param bp_history Pointer that will be set to the BPHistory object.
      */
-    void uncondBranch(void * &bp_history);
+    void uncondBranch(ThreadID tid, Addr pc, void * &bp_history);
     /**
      * Updates the branch predictor to Not Taken if a BTB entry is
      * invalid or not found.
@@ -92,7 +93,7 @@ class TournamentBP : public BPredUnit
      * @param bp_history Pointer to any bp history state.
      * @return Whether or not the branch is taken.
      */
-    void btbUpdate(Addr branch_addr, void * &bp_history);
+    void btbUpdate(ThreadID tid, Addr branch_addr, void * &bp_history);
     /**
      * Updates the branch predictor with the actual result of a branch.
      * @param branch_addr The address of the branch to update.
@@ -102,17 +103,19 @@ class TournamentBP : public BPredUnit
      * @param squashed is set when this function is called during a squash
      * operation.
      */
-    void update(Addr branch_addr, bool taken, void *bp_history, bool squashed);
+    void update(ThreadID tid, Addr branch_addr, bool taken, void *bp_history,
+                bool squashed);
+
+    void retireSquashed(ThreadID tid, void *bp_history);
 
     /**
      * Restores the global branch history on a squash.
      * @param bp_history Pointer to the BPHistory object that has the
      * previous global branch history in it.
      */
-    void squash(void *bp_history);
+    void squash(ThreadID tid, void *bp_history);
 
-    /** Returns the global history. */
-    inline unsigned readGlobalHist() { return globalHistory; }
+    unsigned getGHR(ThreadID tid, void *bp_history) const;
 
   private:
     /**
@@ -129,10 +132,10 @@ class TournamentBP : public BPredUnit
     inline unsigned calcLocHistIdx(Addr &branch_addr);
 
     /** Updates global history as taken. */
-    inline void updateGlobalHistTaken();
+    inline void updateGlobalHistTaken(ThreadID tid);
 
     /** Updates global history as not taken. */
-    inline void updateGlobalHistNotTaken();
+    inline void updateGlobalHistNotTaken(ThreadID tid);
 
     /**
      * Updates local histories as taken.
@@ -164,6 +167,7 @@ class TournamentBP : public BPredUnit
         static int newCount;
 #endif
         unsigned globalHistory;
+        unsigned localHistoryIdx;
         unsigned localHistory;
         bool localPredTaken;
         bool globalPredTaken;
@@ -205,7 +209,7 @@ class TournamentBP : public BPredUnit
     /** Global history register. Contains as much history as specified by
      *  globalHistoryBits. Actual number of bits used is determined by
      *  globalHistoryMask and choiceHistoryMask. */
-    unsigned globalHistory;
+    std::vector<unsigned> globalHistory;
 
     /** Number of bits for the global history. Determines maximum number of
         entries in global and choice predictor tables. */
@@ -231,11 +235,6 @@ class TournamentBP : public BPredUnit
 
     /** Number of bits in the choice predictor's counters. */
     unsigned choiceCtrBits;
-
-    /** Number of bits to shift the instruction over to get rid of the word
-     *  offset.
-     */
-    unsigned instShiftAmt;
 
     /** Thresholds for the counter value; above the threshold is taken,
      *  equal to or below the threshold is not taken.

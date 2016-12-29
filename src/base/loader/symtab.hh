@@ -37,12 +37,12 @@
 #include <string>
 
 #include "base/types.hh"
+#include "sim/serialize.hh"
 
-class Checkpoint;
 class SymbolTable
 {
   public:
-    typedef std::map<Addr, std::string> ATable;
+    typedef std::multimap<Addr, std::string> ATable;
     typedef std::map<std::string, Addr> STable;
 
   private:
@@ -76,9 +76,8 @@ class SymbolTable
     const STable &getSymbolTable() const { return symbolTable; }
 
   public:
-    void serialize(const std::string &base, std::ostream &os);
-    void unserialize(const std::string &base, Checkpoint *cp,
-                     const std::string &section);
+    void serialize(const std::string &base, CheckpointOut &cp) const;
+    void unserialize(const std::string &base, CheckpointIn &cp);
 
   public:
     bool
@@ -88,6 +87,8 @@ class SymbolTable
         if (i == addrTable.end())
             return false;
 
+        // There are potentially multiple symbols that map to the same
+        // address. For simplicity, just return the first one.
         symbol = (*i).second;
         return true;
     }

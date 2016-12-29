@@ -55,9 +55,8 @@ using namespace std;
 
 GlobalSimLoopExitEvent::GlobalSimLoopExitEvent(Tick when,
                                                const std::string &_cause,
-                                               int c, Tick r, bool serialize)
-    : GlobalEvent(when, Sim_Exit_Pri,
-                  IsExitEvent | (serialize ? AutoSerialize : 0)),
+                                               int c, Tick r)
+    : GlobalEvent(when, Sim_Exit_Pri, IsExitEvent),
       cause(_cause), code(c), repeat(r)
 {
 }
@@ -83,19 +82,16 @@ void
 exitSimLoop(const std::string &message, int exit_code, Tick when, Tick repeat,
             bool serialize)
 {
-    new GlobalSimLoopExitEvent(when + simQuantum, message, exit_code, repeat,
-                               serialize);
-}
+    warn_if(serialize && (when != curTick() || repeat),
+            "exitSimLoop called with a delay and auto serialization. This is "
+            "currently unsupported.");
 
-LocalSimLoopExitEvent::LocalSimLoopExitEvent()
-    : Event(Sim_Exit_Pri, IsExitEvent | AutoSerialize),
-      cause(""), code(0), repeat(0)
-{
+    new GlobalSimLoopExitEvent(when + simQuantum, message, exit_code, repeat);
 }
 
 LocalSimLoopExitEvent::LocalSimLoopExitEvent(const std::string &_cause, int c,
-                                   Tick r, bool serialize)
-    : Event(Sim_Exit_Pri, IsExitEvent | (serialize ? AutoSerialize : 0)),
+                                   Tick r)
+    : Event(Sim_Exit_Pri, IsExitEvent),
       cause(_cause), code(c), repeat(r)
 {
 }
@@ -117,10 +113,9 @@ LocalSimLoopExitEvent::description() const
 }
 
 void
-LocalSimLoopExitEvent::serialize(ostream &os)
+LocalSimLoopExitEvent::serialize(CheckpointOut &cp) const
 {
-    paramOut(os, "type", string("SimLoopExitEvent"));
-    Event::serialize(os);
+    Event::serialize(cp);
 
     SERIALIZE_SCALAR(cause);
     SERIALIZE_SCALAR(code);
@@ -128,34 +123,14 @@ LocalSimLoopExitEvent::serialize(ostream &os)
 }
 
 void
-LocalSimLoopExitEvent::unserialize(Checkpoint *cp, const string &section)
+LocalSimLoopExitEvent::unserialize(CheckpointIn &cp)
 {
-    Event::unserialize(cp, section);
+    Event::unserialize(cp);
 
     UNSERIALIZE_SCALAR(cause);
     UNSERIALIZE_SCALAR(code);
     UNSERIALIZE_SCALAR(repeat);
 }
-
-void
-LocalSimLoopExitEvent::unserialize(Checkpoint *cp, const string &section,
-                                   EventQueue *eventq)
-{
-    Event::unserialize(cp, section, eventq);
-
-    UNSERIALIZE_SCALAR(cause);
-    UNSERIALIZE_SCALAR(code);
-    UNSERIALIZE_SCALAR(repeat);
-}
-
-Serializable *
-LocalSimLoopExitEvent::createForUnserialize(Checkpoint *cp,
-                                            const string &section)
-{
-    return new LocalSimLoopExitEvent();
-}
-
-REGISTER_SERIALIZEABLE("LocalSimLoopExitEvent", LocalSimLoopExitEvent)
 
 //
 // constructor: automatically schedules at specified time

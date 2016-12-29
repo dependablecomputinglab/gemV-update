@@ -32,6 +32,7 @@
 /** @file
  * Tsunami PChip (pci)
  */
+#include "dev/alpha/tsunami_pchip.hh"
 
 #include <deque>
 #include <string>
@@ -41,8 +42,9 @@
 #include "config/the_isa.hh"
 #include "debug/Tsunami.hh"
 #include "dev/alpha/tsunami.hh"
-#include "dev/alpha/tsunami_pchip.hh"
+#include "dev/alpha/tsunami_cchip.hh"
 #include "dev/alpha/tsunamireg.h"
+#include "dev/pci/device.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 #include "sim/system.hh"
@@ -52,7 +54,9 @@ using namespace std;
 using namespace TheISA;
 
 TsunamiPChip::TsunamiPChip(const Params *p)
-    : BasicPioDevice(p, 0x1000)
+    : GenericPciHost(p),
+      pioRange(RangeSize(p->pio_addr, 0x1000)),
+      pioDelay(p->pio_latency)
 {
     for (int i = 0; i < 4; i++) {
         wsba[i] = 0;
@@ -70,10 +74,12 @@ TsunamiPChip::TsunamiPChip(const Params *p)
 Tick
 TsunamiPChip::read(PacketPtr pkt)
 {
-    assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
+    // We only need to handle our own configuration registers, pass
+    // unknown addresses to the generic code.
+    if (!pioRange.contains(pkt->getAddr()))
+        return GenericPciHost::read(pkt);
 
-    pkt->allocate();
-    Addr daddr = (pkt->getAddr() - pioAddr) >> 6;;
+    Addr daddr = (pkt->getAddr() - pioRange.start()) >> 6;;
     assert(pkt->getSize() == sizeof(uint64_t));
 
 
@@ -143,6 +149,7 @@ TsunamiPChip::read(PacketPtr pkt)
       default:
           panic("Default in PChip Read reached reading 0x%x\n", daddr);
     }
+
     pkt->makeAtomicResponse();
     return pioDelay;
 
@@ -151,8 +158,12 @@ TsunamiPChip::read(PacketPtr pkt)
 Tick
 TsunamiPChip::write(PacketPtr pkt)
 {
-    assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
-    Addr daddr = (pkt->getAddr() - pioAddr) >> 6;
+    // We only need to handle our own configuration registers, pass
+    // unknown addresses to the generic code.
+    if (!pioRange.contains(pkt->getAddr()))
+        return GenericPciHost::write(pkt);
+
+    Addr daddr = (pkt->getAddr() - pioRange.start()) >> 6;
 
     assert(pkt->getSize() == sizeof(uint64_t));
 
@@ -225,10 +236,21 @@ TsunamiPChip::write(PacketPtr pkt)
     return pioDelay;
 }
 
+
+AddrRangeList
+TsunamiPChip::getAddrRanges() const
+{
+    return AddrRangeList({
+            RangeSize(confBase, confSize),
+            pioRange
+        });
+}
+
+
 #define DMA_ADDR_MASK ULL(0x3ffffffff)
 
 Addr
-TsunamiPChip::translatePciToDma(Addr busAddr)
+TsunamiPChip::dmaAddr(const PciBusAddr &dev, Addr busAddr) const
 {
     // compare the address to the window base registers
     uint64_t tbaMask = 0;
@@ -302,30 +324,8 @@ TsunamiPChip::translatePciToDma(Addr busAddr)
     return busAddr;
 }
 
-Addr
-TsunamiPChip::calcConfigAddr(int bus, int dev, int func)
-{
-    assert(func < 8);
-    assert(dev < 32);
-    assert(bus == 0);
-
-    return TsunamiPciBus0Config | (func << 8) | (dev << 11);
-}
-
-Addr
-TsunamiPChip::calcIOAddr(Addr addr)
-{
-    return TSUNAMI_PCI0_IO + addr;
-}
-
-Addr
-TsunamiPChip::calcMemAddr(Addr addr)
-{
-    return TSUNAMI_PCI0_MEMORY + addr;
-}
-
 void
-TsunamiPChip::serialize(std::ostream &os)
+TsunamiPChip::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(pctl);
     SERIALIZE_ARRAY(wsba, 4);
@@ -334,7 +334,7 @@ TsunamiPChip::serialize(std::ostream &os)
 }
 
 void
-TsunamiPChip::unserialize(Checkpoint *cp, const std::string &section)
+TsunamiPChip::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(pctl);
     UNSERIALIZE_ARRAY(wsba, 4);

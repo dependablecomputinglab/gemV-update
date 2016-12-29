@@ -62,8 +62,8 @@
 //#include "base/vulnerability/vulnerabilityParams.hh"        //VUL_PIPELINE
 
 template <class Impl>
-BaseDynInst<Impl>::BaseDynInst(StaticInstPtr _staticInst,
-                               StaticInstPtr _macroop,
+BaseDynInst<Impl>::BaseDynInst(const StaticInstPtr &_staticInst,
+                               const StaticInstPtr &_macroop,
                                TheISA::PCState _pc, TheISA::PCState _predPC,
                                InstSeqNum seq_num, ImplCPU *cpu)
   : staticInst(_staticInst), cpu(cpu), traceData(NULL), macroop(_macroop)
@@ -85,8 +85,8 @@ BaseDynInst<Impl>::BaseDynInst(StaticInstPtr _staticInst,
 }
 
 template <class Impl>
-BaseDynInst<Impl>::BaseDynInst(StaticInstPtr _staticInst,
-                               StaticInstPtr _macroop)
+BaseDynInst<Impl>::BaseDynInst(const StaticInstPtr &_staticInst,
+                               const StaticInstPtr &_macroop)
     : staticInst(_staticInst), traceData(NULL), macroop(_macroop)
 {
     seqNum = 0;
@@ -99,8 +99,10 @@ BaseDynInst<Impl>::initVars()
 {
     memData = NULL;
     effAddr = 0;
-    physEffAddr = 0;
+    physEffAddrLow = 0;
+    physEffAddrHigh = 0;
     readyRegs = 0;
+    memReqFlags = 0;
 
     status.reset();
 

@@ -91,7 +91,16 @@ class BaseGlobalEvent : public EventBase
 
         bool globalBarrier()
         {
-            return _globalEvent->barrier->wait();
+            // This method will be called from the process() method in
+            // the local barrier events
+            // (GlobalSyncEvent::BarrierEvent).  The local event
+            // queues are always locked when servicing events (calling
+            // the process() method), which means that it will be
+            // locked when entering this method. We need to unlock it
+            // while waiting on the barrier to prevent deadlocks if
+            // another thread wants to lock the event queue.
+            EventQueue::ScopedRelease release(curEventQueue());
+            return _globalEvent->barrier.wait();
         }
 
       public:
@@ -100,7 +109,7 @@ class BaseGlobalEvent : public EventBase
 
     //! The barrier that all threads wait on before performing the
     //! global event.
-    Barrier *barrier;
+    Barrier barrier;
 
     //! The individual local event instances (one per thread/event queue).
     std::vector<BarrierEvent *> barrierEvent;
@@ -210,7 +219,7 @@ class GlobalSyncEvent : public BaseGlobalEventTemplate<GlobalSyncEvent>
     };
 
     GlobalSyncEvent(Priority p, Flags f)
-        : Base(p, f)
+        : Base(p, f), repeat(0)
     { }
 
     GlobalSyncEvent(Tick when, Tick _repeat, Priority p, Flags f)

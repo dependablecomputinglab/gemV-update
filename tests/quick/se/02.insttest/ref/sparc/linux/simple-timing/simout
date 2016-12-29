@@ -3,10 +3,11 @@ Redirecting stderr to build/SPARC/tests/opt/quick/se/02.insttest/sparc/linux/sim
 gem5 Simulator System.  http://gem5.org
 gem5 is copyrighted software; use the --copyright option for details.
 
-gem5 compiled Sep 22 2013 06:07:13
-gem5 started Sep 22 2013 06:07:35
-gem5 executing on zizzer
-command line: build/SPARC/gem5.opt -d build/SPARC/tests/opt/quick/se/02.insttest/sparc/linux/simple-timing -re tests/run.py build/SPARC/tests/opt/quick/se/02.insttest/sparc/linux/simple-timing
+gem5 compiled Jul 21 2016 14:30:06
+gem5 started Jul 21 2016 14:30:38
+gem5 executing on e108600-lin, pid 38722
+command line: /work/curdun01/gem5-external.hg/build/SPARC/gem5.opt -d build/SPARC/tests/opt/quick/se/02.insttest/sparc/linux/simple-timing -re /work/curdun01/gem5-external.hg/tests/testing/../run.py quick/se/02.insttest/sparc/linux/simple-timing
+
 Global frequency set at 1000000000000 ticks per second
 info: Entering event queue @ 0.  Starting simulation...
 Begining test of difficult SPARC instructions...
@@ -20,4 +21,4 @@ LDTX:		Passed
 LDTW:		Passed
 STTW:		Passed
 Done
-Exiting @ tick 41368000 because target called exit()
+Exiting @ tick 44282500 because target called exit()

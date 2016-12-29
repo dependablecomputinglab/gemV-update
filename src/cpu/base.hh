@@ -62,11 +62,27 @@
 #include "sim/eventq.hh"
 #include "sim/full_system.hh"
 #include "sim/insttracer.hh"
+#include "sim/probe/pmu.hh"
 #include "sim/system.hh"
+#include "debug/Mwait.hh"
 
+class BaseCPU;
 struct BaseCPUParams;
 class CheckerCPU;
 class ThreadContext;
+
+struct AddressMonitor
+{
+    AddressMonitor();
+    bool doMonitor(PacketPtr pkt);
+
+    bool armed;
+    Addr vAddr;
+    Addr pAddr;
+    uint64_t val;
+    bool waiting;   // 0=normal, 1=mwaiting
+    bool gotWakeup;
+};
 
 class CPUProgressEvent : public Event
 {
@@ -93,13 +109,22 @@ class BaseCPU : public MemObject
 {
   protected:
 
-    // @todo remove me after debugging with legion done
+    /// Instruction count used for SPARC misc register
+    /// @todo unify this with the counters that cpus individually keep
     Tick instCnt;
+
     // every cpu has an id, put it in the base cpu
     // Set at initialization, only time a cpuId might change is during a
     // takeover (which should be done from within the BaseCPU anyway,
     // therefore no setCpuId() method is provided
     int _cpuId;
+
+    /** Each cpu will have a socket ID that corresponds to its physical location
+     * in the system. This is usually used to bucket cpu cores under single DVFS
+     * domain. This information may also be required by the OS to identify the
+     * cpu core grouping (as in the case of ARM via MPIDR register)
+     */
+    const uint32_t _socketId;
 
     /** instruction side request id that must be placed in all requests */
     MasterID _instMasterId;
@@ -143,7 +168,10 @@ class BaseCPU : public MemObject
     virtual MasterPort &getInstPort() = 0;
 
     /** Reads this CPU's ID. */
-    int cpuId() { return _cpuId; }
+    int cpuId() const { return _cpuId; }
+
+    /** Reads this CPU's Socket ID. */
+    uint32_t socketId() const { return _socketId; }
 
     /** Reads this CPU's unique data requestor ID */
     MasterID dataMasterId() { return _dataMasterId; }
@@ -161,7 +189,7 @@ class BaseCPU : public MemObject
      * @return a reference to the port with the given name
      */
     BaseMasterPort &getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID);
+                                  PortID idx = InvalidPortID) override;
 
     /** Get cpu task id */
     uint32_t taskId() const { return _taskId; }
@@ -179,41 +207,45 @@ class BaseCPU : public MemObject
     TheISA::MicrocodeRom microcodeRom;
 
   protected:
-    TheISA::Interrupts *interrupts;
+    std::vector<TheISA::Interrupts*> interrupts;
 
   public:
     TheISA::Interrupts *
-    getInterruptController()
+    getInterruptController(ThreadID tid)
     {
-        return interrupts;
+        if (interrupts.empty())
+            return NULL;
+
+        assert(interrupts.size() > tid);
+        return interrupts[tid];
     }
 
-    virtual void wakeup() = 0;
+    virtual void wakeup(ThreadID tid) = 0;
 
     void
-    postInterrupt(int int_num, int index)
+    postInterrupt(ThreadID tid, int int_num, int index)
     {
-        interrupts->post(int_num, index);
+        interrupts[tid]->post(int_num, index);
         if (FullSystem)
-            wakeup();
+            wakeup(tid);
     }
 
     void
-    clearInterrupt(int int_num, int index)
+    clearInterrupt(ThreadID tid, int int_num, int index)
     {
-        interrupts->clear(int_num, index);
+        interrupts[tid]->clear(int_num, index);
     }
 
     void
-    clearInterrupts()
+    clearInterrupts(ThreadID tid)
     {
-        interrupts->clearAll();
+        interrupts[tid]->clearAll();
     }
 
     bool
     checkInterrupts(ThreadContext *tc) const
     {
-        return FullSystem && interrupts->checkInterrupts(tc);
+        return FullSystem && interrupts[tc->threadId()]->checkInterrupts(tc);
     }
 
     class ProfileEvent : public Event
@@ -235,22 +267,23 @@ class BaseCPU : public MemObject
 
   public:
 
+
+    /** Invalid or unknown Pid. Possible when operating system is not present
+     *  or has not assigned a pid yet */
+    static const uint32_t invldPid = std::numeric_limits<uint32_t>::max();
+
     // Mask to align PCs to MachInst sized boundaries
     static const Addr PCMask = ~((Addr)sizeof(TheISA::MachInst) - 1);
 
     /// Provide access to the tracer pointer
     Trace::InstTracer * getTracer() { return tracer; }
 
-    /// Notify the CPU that the indicated context is now active.  The
-    /// delay parameter indicates the number of ticks to wait before
-    /// executing (typically 0 or 1).
-    virtual void activateContext(ThreadID thread_num, Cycles delay) {}
+    /// Notify the CPU that the indicated context is now active.
+    virtual void activateContext(ThreadID thread_num);
 
     /// Notify the CPU that the indicated context is now suspended.
-    virtual void suspendContext(ThreadID thread_num) {}
-
-    /// Notify the CPU that the indicated context is now deallocated.
-    virtual void deallocateContext(ThreadID thread_num) {}
+    /// Check if possible to enter a lower power state
+    virtual void suspendContext(ThreadID thread_num);
 
     /// Notify the CPU that the indicated context is now halted.
     virtual void haltContext(ThreadID thread_num) {}
@@ -261,6 +294,13 @@ class BaseCPU : public MemObject
    /// Given a thread num get tho thread context for it
    virtual ThreadContext *getContext(int tn) { return threadContexts[tn]; }
 
+   /// Get the number of thread contexts available
+   unsigned numContexts() { return threadContexts.size(); }
+
+    /// Convert ContextID to threadID
+    ThreadID contextToThread(ContextID cid)
+    { return static_cast<ThreadID>(cid - threadContexts[0]->contextId()); }
+
   public:
     typedef BaseCPUParams Params;
     const Params *params() const
@@ -268,11 +308,11 @@ class BaseCPU : public MemObject
     BaseCPU(Params *params, bool is_checker = false);
     virtual ~BaseCPU();
 
-    virtual void init();
-    virtual void startup();
-    virtual void regStats();
+    void init() override;
+    void startup() override;
+    void regStats() override;
 
-    virtual void activateWhenReady(ThreadID tid) {};
+    void regProbePoints() override;
 
     void registerThreadContexts();
 
@@ -364,7 +404,7 @@ class BaseCPU : public MemObject
      *
      * @param os The stream to serialize to.
      */
-    virtual void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const override;
 
     /**
      * Reconstruct the state of this object from a checkpoint.
@@ -377,7 +417,7 @@ class BaseCPU : public MemObject
      * @param cp The checkpoint use.
      * @param section The section name of this object.
      */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void unserialize(CheckpointIn &cp) override;
 
     /**
      * Serialize a single thread.
@@ -385,7 +425,7 @@ class BaseCPU : public MemObject
      * @param os The stream to serialize to.
      * @param tid ID of the current thread.
      */
-    virtual void serializeThread(std::ostream &os, ThreadID tid) {};
+    virtual void serializeThread(CheckpointOut &cp, ThreadID tid) const {};
 
     /**
      * Unserialize one thread.
@@ -394,8 +434,7 @@ class BaseCPU : public MemObject
      * @param section The section name of this thread.
      * @param tid ID of the current thread.
      */
-    virtual void unserializeThread(Checkpoint *cp, const std::string &section,
-                                   ThreadID tid) {};
+    virtual void unserializeThread(CheckpointIn &cp, ThreadID tid) {};
 
     virtual Counter totalInsts() const = 0;
 
@@ -430,6 +469,63 @@ class BaseCPU : public MemObject
      * @param cause Cause to signal in the exit event.
      */
     void scheduleLoadStop(ThreadID tid, Counter loads, const char *cause);
+
+    /**
+     * Get the number of instructions executed by the specified thread
+     * on this CPU. Used by Python to control simulation.
+     *
+     * @param tid Thread monitor
+     * @return Number of instructions executed
+     */
+    uint64_t getCurrentInstCount(ThreadID tid);
+
+  public:
+    /**
+     * @{
+     * @name PMU Probe points.
+     */
+
+    /**
+     * Helper method to trigger PMU probes for a committed
+     * instruction.
+     *
+     * @param inst Instruction that just committed
+     */
+    virtual void probeInstCommit(const StaticInstPtr &inst);
+
+    /**
+     * Helper method to instantiate probe points belonging to this
+     * object.
+     *
+     * @param name Name of the probe point.
+     * @return A unique_ptr to the new probe point.
+     */
+    ProbePoints::PMUUPtr pmuProbePoint(const char *name);
+
+    /** CPU cycle counter */
+    ProbePoints::PMUUPtr ppCycles;
+
+    /**
+     * Instruction commit probe point.
+     *
+     * This probe point is triggered whenever one or more instructions
+     * are committed. It is normally triggered once for every
+     * instruction. However, CPU models committing bundles of
+     * instructions may call notify once for the entire bundle.
+     */
+    ProbePoints::PMUUPtr ppRetiredInsts;
+
+    /** Retired load instructions */
+    ProbePoints::PMUUPtr ppRetiredLoads;
+    /** Retired store instructions */
+    ProbePoints::PMUUPtr ppRetiredStores;
+
+    /** Retired branches (any type) */
+    ProbePoints::PMUUPtr ppRetiredBranches;
+
+    /** @} */
+
+
 
     // Function tracing
   private:
@@ -479,6 +575,19 @@ class BaseCPU : public MemObject
     Stats::Scalar numCycles;
     Stats::Scalar numWorkItemsStarted;
     Stats::Scalar numWorkItemsCompleted;
+
+  private:
+    std::vector<AddressMonitor> addressMonitor;
+
+  public:
+    void armMonitor(ThreadID tid, Addr address);
+    bool mwait(ThreadID tid, PacketPtr pkt);
+    void mwaitAtomic(ThreadID tid, ThreadContext *tc, TheISA::TLB *dtb);
+    AddressMonitor *getCpuAddrMonitor(ThreadID tid)
+    {
+        assert(tid < numThreads);
+        return &addressMonitor[tid];
+    }
 };
 
 #endif // THE_ISA == NULL_ISA

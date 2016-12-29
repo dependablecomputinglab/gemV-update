@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2013 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2011 Google
  * All rights reserved.
  *
@@ -32,17 +44,19 @@
 #define __ARCH_GENERIC_MEMHELPERS_HH__
 
 #include "base/types.hh"
+#include "mem/request.hh"
 #include "sim/byteswap.hh"
-#include "sim/fault_fwd.hh"
 #include "sim/insttracer.hh"
 
-/// Read from memory in timing mode.
+/// Initiate a read from memory in timing mode.  Note that the 'mem'
+/// parameter is unused; only the type of that parameter is used
+/// to determine the size of the access.
 template <class XC, class MemT>
 Fault
-readMemTiming(XC *xc, Trace::InstRecord *traceData, Addr addr,
-        MemT &mem, unsigned flags)
+initiateMemRead(XC *xc, Trace::InstRecord *traceData, Addr addr,
+                MemT &mem, Request::Flags flags)
 {
-    return xc->readMem(addr, (uint8_t *)&mem, sizeof(MemT), flags);
+    return xc->initiateMemRead(addr, sizeof(MemT), flags);
 }
 
 /// Extract the data returned from a timing mode read.
@@ -59,10 +73,10 @@ getMem(PacketPtr pkt, MemT &mem, Trace::InstRecord *traceData)
 template <class XC, class MemT>
 Fault
 readMemAtomic(XC *xc, Trace::InstRecord *traceData, Addr addr, MemT &mem,
-        unsigned flags)
+              Request::Flags flags)
 {
     memset(&mem, 0, sizeof(mem));
-    Fault fault = readMemTiming(xc, traceData, addr, mem, flags);
+    Fault fault = xc->readMem(addr, (uint8_t *)&mem, sizeof(MemT), flags);
     if (fault == NoFault) {
         mem = TheISA::gtoh(mem);
         if (traceData)
@@ -75,7 +89,7 @@ readMemAtomic(XC *xc, Trace::InstRecord *traceData, Addr addr, MemT &mem,
 template <class XC, class MemT>
 Fault
 writeMemTiming(XC *xc, Trace::InstRecord *traceData, MemT mem, Addr addr,
-        unsigned flags, uint64_t *res)
+               Request::Flags flags, uint64_t *res)
 {
     if (traceData) {
         traceData->setData(mem);
@@ -88,11 +102,19 @@ writeMemTiming(XC *xc, Trace::InstRecord *traceData, MemT mem, Addr addr,
 template <class XC, class MemT>
 Fault
 writeMemAtomic(XC *xc, Trace::InstRecord *traceData, const MemT &mem,
-        Addr addr, unsigned flags, uint64_t *res)
+               Addr addr, Request::Flags flags, uint64_t *res)
 {
-    Fault fault = writeMemTiming(xc, traceData, mem, addr, flags, res);
+    if (traceData) {
+        traceData->setData(mem);
+    }
+    MemT host_mem = TheISA::htog(mem);
+    Fault fault =
+          xc->writeMem((uint8_t *)&host_mem, sizeof(MemT), addr, flags, res);
     if (fault == NoFault && res != NULL) {
-        *res = TheISA::gtoh((MemT)*res);
+        if (flags & Request::MEM_SWAP || flags & Request::MEM_SWAP_COND)
+            *res = TheISA::gtoh((MemT)*res);
+        else
+            *res = TheISA::gtoh(*res);
     }
     return fault;
 }

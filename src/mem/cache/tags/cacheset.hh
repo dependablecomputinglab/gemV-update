@@ -45,12 +45,10 @@
  * Declaration of an associative set
  */
 
-#ifndef __CACHESET_HH__
-#define __CACHESET_HH__
+#ifndef __MEM_CACHE_TAGS_CACHESET_HH__
+#define __MEM_CACHE_TAGS_CACHESET_HH__
 
 #include <cassert>
-
-#include "mem/cache/blk.hh" // base class
 
 /**
  * An associative set of cache blocks.
@@ -69,10 +67,11 @@ class CacheSet
      * Find a block matching the tag in this set.
      * @param way_id The id of the way that matches the tag.
      * @param tag The Tag to find.
+     * @param is_secure True if the target memory space is secure.
      * @return Pointer to the block if found. Set way_id to assoc if none found
      */
-    Blktype* findBlk(Addr tag, int& way_id) const ;
-    Blktype* findBlk(Addr tag) const ;
+    Blktype* findBlk(Addr tag, bool is_secure, int& way_id) const ;
+    Blktype* findBlk(Addr tag, bool is_secure) const ;
 
     /**
      * Move the given block to the head of the list.
@@ -90,7 +89,7 @@ class CacheSet
 
 template <class Blktype>
 Blktype*
-CacheSet<Blktype>::findBlk(Addr tag, int& way_id) const
+CacheSet<Blktype>::findBlk(Addr tag, bool is_secure, int& way_id) const
 {
     /**
      * Way_id returns the id of the way that matches the block
@@ -98,20 +97,21 @@ CacheSet<Blktype>::findBlk(Addr tag, int& way_id) const
      */
     way_id = assoc;
     for (int i = 0; i < assoc; ++i) {
-        if (blks[i]->tag == tag && blks[i]->isValid()) {
+        if (blks[i]->tag == tag && blks[i]->isValid() &&
+            blks[i]->isSecure() == is_secure) {
             way_id = i;
             return blks[i];
         }
     }
-    return NULL;
+    return nullptr;
 }
 
 template <class Blktype>
 Blktype*
-CacheSet<Blktype>::findBlk(Addr tag) const
+CacheSet<Blktype>::findBlk(Addr tag, bool is_secure) const
 {
     int ignored_way_id;
-    return findBlk(tag, ignored_way_id);
+    return findBlk(tag, is_secure, ignored_way_id);
 }
 
 template <class Blktype>
@@ -131,10 +131,7 @@ CacheSet<Blktype>::moveToHead(Blktype *blk)
 
     do {
         assert(i < assoc);
-        // swap blks[i] and next
-        Blktype *tmp = blks[i];
-        blks[i] = next;
-        next = tmp;
+        std::swap(blks[i], next);
         ++i;
     } while (next != blk);
 }
@@ -156,10 +153,7 @@ CacheSet<Blktype>::moveToTail(Blktype *blk)
 
     do {
         assert(i >= 0);
-        // swap blks[i] and next
-        Blktype *tmp = blks[i];
-        blks[i] = next;
-        next = tmp;
+        std::swap(blks[i], next);
         --i;
     } while (next != blk);
 }

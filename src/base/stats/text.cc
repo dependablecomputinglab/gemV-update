@@ -210,7 +210,7 @@ ScalarPrint::update(Result val, Result total)
 void
 ScalarPrint::operator()(ostream &stream, bool oneLine) const
 {
-    if ((flags.isSet(nozero) && value == 0.0) ||
+    if ((flags.isSet(nozero) && (!oneLine) && value == 0.0) ||
         (flags.isSet(nonan) && std::isnan(value)))
         return;
 
@@ -284,7 +284,7 @@ VectorPrint::operator()(std::ostream &stream) const
         // the case where there are no subnames) and append it to the
         // base name.
         if (forceSubnames)
-            print.name = base + (havesub ? subnames[0] : to_string(0));
+            print.name = base + (havesub ? subnames[0] : std::to_string(0));
         print.value = vec[0];
         print(stream);
         return;
@@ -300,7 +300,7 @@ VectorPrint::operator()(std::ostream &stream) const
             if (havesub && (i >= subnames.size() || subnames[i].empty()))
                 continue;
 
-            print.name = base + (havesub ? subnames[i] : to_string(i));
+            print.name = base + (havesub ? subnames[i] : std::to_string(i));
             print.desc = subdescs.empty() ? desc : subdescs[i];
 
             print.update(vec[i], _total);
@@ -312,7 +312,6 @@ VectorPrint::operator()(std::ostream &stream) const
                 if (!desc.empty())
                     ccprintf(stream, " # %s", desc);
             }
-
             stream << endl;
         }
     }
@@ -324,10 +323,6 @@ VectorPrint::operator()(std::ostream &stream) const
         print.desc = desc;
         print.value = total;
         print(stream);
-    }
-
-    if (flags.isSet(oneline) && ((!flags.isSet(nozero)) || (total != 0))) {
-        stream << endl;
     }
 }
 
@@ -360,7 +355,7 @@ DistPrint::DistPrint(const Text *text, const VectorDistInfo &info, int i)
     init(text, info);
 
     name = info.name + "_" +
-        (info.subnames[i].empty() ? (to_string(i)) : info.subnames[i]);
+        (info.subnames[i].empty() ? (std::to_string(i)) : info.subnames[i]);
 
     if (!info.subdescs[i].empty())
         desc = info.subdescs[i];
@@ -380,6 +375,7 @@ DistPrint::init(const Text *text, const Info &info)
 void
 DistPrint::operator()(ostream &stream) const
 {
+    if (flags.isSet(nozero) && data.samples == 0) return;
     string base = name + separatorString;
 
     ScalarPrint print;
@@ -389,6 +385,20 @@ DistPrint::operator()(ostream &stream) const
     print.desc = desc;
     print.pdf = NAN;
     print.cdf = NAN;
+
+    if (flags.isSet(oneline)) {
+        print.name = base + "bucket_size";
+        print.value = data.bucket_size;
+        print(stream);
+
+        print.name = base + "min_bucket";
+        print.value = data.min;
+        print(stream);
+
+        print.name = base + "max_bucket";
+        print.value = data.max;
+        print(stream);
+    }
 
     print.name = base + "samples";
     print.value = data.samples;
@@ -436,6 +446,10 @@ DistPrint::operator()(ostream &stream) const
         print(stream);
     }
 
+    if (flags.isSet(oneline)) {
+        ccprintf(stream, "%-40s", name);
+    }
+
     for (off_type i = 0; i < size; ++i) {
         stringstream namestr;
         namestr << base;
@@ -448,7 +462,15 @@ DistPrint::operator()(ostream &stream) const
 
         print.name = namestr.str();
         print.update(data.cvec[i], total);
-        print(stream);
+        print(stream, flags.isSet(oneline));
+    }
+
+    if (flags.isSet(oneline)) {
+        if (descriptions) {
+            if (!desc.empty())
+                ccprintf(stream, " # %s", desc);
+        }
+        stream << endl;
     }
 
     if (data.type == Dist && data.overflow != NAN) {
@@ -549,8 +571,8 @@ Text::visit(const Vector2dInfo &info)
         for (off_type i = 0; i < info.y; ++i) {
             if (!info.y_subnames[i].empty()) {
                 print.subnames = info.y_subnames;
+                break;
             }
-            break;
         }
     }
     print.flags = info.flags;
@@ -566,7 +588,6 @@ Text::visit(const Vector2dInfo &info)
     }
 
     VResult tot_vec(info.y);
-    VResult super_total(1, 0.0);
     for (off_type i = 0; i < info.x; ++i) {
         if (havesub && (i >= info.subnames.size() || info.subnames[i].empty()))
             continue;
@@ -579,11 +600,10 @@ Text::visit(const Vector2dInfo &info)
             yvec[j] = info.cvec[iy + j];
             tot_vec[j] += yvec[j];
             total += yvec[j];
-            super_total[0] += yvec[j];
         }
 
         print.name = info.name + "_" +
-            (havesub ? info.subnames[i] : to_string(i));
+            (havesub ? info.subnames[i] : std::to_string(i));
         print.desc = info.desc;
         print.vec = yvec;
         print.total = total;
@@ -598,7 +618,7 @@ Text::visit(const Vector2dInfo &info)
         print.name = info.name;
         print.subnames = total_subname;
         print.desc = info.desc;
-        print.vec = super_total;
+        print.vec = VResult(1, info.total());
         print.flags = print.flags & ~total;
         print(*stream);
     }
@@ -718,11 +738,7 @@ initText(const string &filename, bool desc)
     static bool connected = false;
 
     if (!connected) {
-        ostream *os = simout.find(filename);
-        if (!os)
-            os = simout.create(filename);
-
-        text.open(*os);
+        text.open(*simout.findOrCreate(filename)->stream());
         text.descriptions = desc;
         connected = true;
     }

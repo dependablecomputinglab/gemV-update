@@ -56,30 +56,32 @@ class Checkpoint;
  *  memory, quiesce events, and certain stats.  This can be expanded
  *  to hold more thread-specific stats within it.
  */
-struct ThreadState {
+struct ThreadState : public Serializable {
     typedef ThreadContext::Status Status;
 
     ThreadState(BaseCPU *cpu, ThreadID _tid, Process *_process);
 
     virtual ~ThreadState();
 
-    void serialize(std::ostream &os);
+    void serialize(CheckpointOut &cp) const override;
 
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void unserialize(CheckpointIn &cp) override;
 
-    int cpuId() { return baseCpu->cpuId(); }
+    int cpuId() const { return baseCpu->cpuId(); }
 
-    int contextId() { return _contextId; }
+    uint32_t socketId() const { return baseCpu->socketId(); }
 
-    void setContextId(int id) { _contextId = id; }
+    ContextID contextId() const { return _contextId; }
+
+    void setContextId(ContextID id) { _contextId = id; }
 
     void setThreadId(ThreadID id) { _threadId = id; }
 
-    ThreadID threadId() { return _threadId; }
+    ThreadID threadId() const { return _threadId; }
 
-    Tick readLastActivate() { return lastActivate; }
+    Tick readLastActivate() const { return lastActivate; }
 
-    Tick readLastSuspend() { return lastSuspend; }
+    Tick readLastSuspend() const { return lastSuspend; }
 
     /**
      * Initialise the physical and virtual port proxies and tie them to
@@ -151,7 +153,7 @@ struct ThreadState {
     BaseCPU *baseCpu;
 
     // system wide HW context id
-    int _contextId;
+    ContextID _contextId;
 
     // Index of hardware thread context on the CPU that this represents.
     ThreadID _threadId;

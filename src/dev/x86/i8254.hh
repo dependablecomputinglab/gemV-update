@@ -61,11 +61,11 @@ class I8254 : public BasicPioDevice
         {}
     };
 
-    
+
     X86Intel8254Timer pit;
 
     IntSourcePin *intPin;
-    
+
     void counterInterrupt(unsigned int num);
 
   public:
@@ -81,9 +81,9 @@ class I8254 : public BasicPioDevice
             pit(p->name, this), intPin(p->int_pin)
     {
     }
-    Tick read(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
 
-    Tick write(PacketPtr pkt);
+    Tick write(PacketPtr pkt) override;
 
     bool
     outputHigh(unsigned int num)
@@ -109,8 +109,10 @@ class I8254 : public BasicPioDevice
         pit.writeControl(val);
     }
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
+    void startup() override;
 
 };
 

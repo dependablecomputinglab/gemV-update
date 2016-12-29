@@ -90,7 +90,8 @@ struct O3ThreadState : public ThreadState {
 
     O3ThreadState(O3CPU *_cpu, int _thread_num, Process *_process)
         : ThreadState(_cpu, _thread_num, _process),
-          cpu(_cpu), noSquashFromTC(false), trapPending(false)
+          cpu(_cpu), noSquashFromTC(false), trapPending(false),
+          tc(nullptr)
     {
         if (!FullSystem)
             return;
@@ -111,24 +112,24 @@ struct O3ThreadState : public ThreadState {
         profilePC = 3;
     }
 
-    void serialize(std::ostream &os)
+    void serialize(CheckpointOut &cp) const override
     {
-        ThreadState::serialize(os);
+        ThreadState::serialize(cp);
         // Use the ThreadContext serialization helper to serialize the
         // TC.
-        ::serialize(*tc, os);
+        ::serialize(*tc, cp);
     }
 
-    void unserialize(Checkpoint *cp, const std::string &section)
+    void unserialize(CheckpointIn &cp) override
     {
         // Prevent squashing - we don't have any instructions in
         // flight that we need to squash since we just instantiated a
         // clean system.
         noSquashFromTC = true;
-        ThreadState::unserialize(cp, section);
+        ThreadState::unserialize(cp);
         // Use the ThreadContext serialization helper to unserialize
         // the TC.
-        ::unserialize(*tc, cp, section);
+        ::unserialize(*tc, cp);
         noSquashFromTC = false;
     }
 
@@ -143,8 +144,10 @@ struct O3ThreadState : public ThreadState {
 
     void dumpFuncProfile()
     {
-        std::ostream *os = simout.create(csprintf("profile.%s.dat", cpu->name()));
-        profile->dump(tc, *os);
+        OutputStream *os(
+            simout.create(csprintf("profile.%s.dat", cpu->name())));
+        profile->dump(tc, *os->stream());
+        simout.close(os);
     }
 };
 

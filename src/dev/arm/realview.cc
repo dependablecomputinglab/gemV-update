@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009 ARM Limited
+ * Copyright (c) 2009, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -58,8 +58,9 @@
 using namespace std;
 using namespace TheISA;
 
+
 RealView::RealView(const Params *p)
-    : Platform(p), system(p->system)
+    : Platform(p), system(p->system), gic(nullptr)
 {}
 
 void
@@ -86,33 +87,6 @@ void
 RealView::clearPciInt(int line)
 {
     gic->clearInt(line);
-}
-
-Addr
-RealView::pciToDma(Addr pciAddr) const
-{
-    return pciAddr;
-}
-
-
-Addr
-RealView::calcPciConfigAddr(int bus, int dev, int func)
-{
-    if (bus != 0)
-        return ULL(-1);
-    return params()->pci_cfg_base | ((func & 7) << 16) | ((dev & 0x1f) << 19);
-}
-
-Addr
-RealView::calcPciIOAddr(Addr addr)
-{
-    return addr;
-}
-
-Addr
-RealView::calcPciMemAddr(Addr addr)
-{
-    return addr;
 }
 
 RealView *

@@ -39,7 +39,6 @@
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Context.hh"
-#include "kern/tru64/tru64_syscalls.hh"
 #include "sim/system.hh"
 
 using namespace std;
@@ -181,22 +180,12 @@ Statistics::callpal(int code, ThreadContext *tc)
         return;
 
     _callpal[code]++;
-
-    switch (code) {
-      case PAL::callsys: {
-          int number = tc->readIntReg(0);
-          if (SystemCalls<Tru64>::validSyscallNumber(number)) {
-              int cvtnum = SystemCalls<Tru64>::convert(number);
-              _syscall[cvtnum]++;
-          }
-      } break;
-    }
 }
 
 void
-Statistics::serialize(ostream &os)
+Statistics::serialize(CheckpointOut &cp) const
 {
-    ::Kernel::Statistics::serialize(os);
+    ::Kernel::Statistics::serialize(cp);
     int exemode = themode;
     SERIALIZE_SCALAR(exemode);
     SERIALIZE_SCALAR(idleProcess);
@@ -204,9 +193,9 @@ Statistics::serialize(ostream &os)
 }
 
 void
-Statistics::unserialize(Checkpoint *cp, const string &section)
+Statistics::unserialize(CheckpointIn &cp)
 {
-    ::Kernel::Statistics::unserialize(cp, section);
+    ::Kernel::Statistics::unserialize(cp);
     int exemode;
     UNSERIALIZE_SCALAR(exemode);
     UNSERIALIZE_SCALAR(idleProcess);

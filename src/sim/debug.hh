@@ -44,6 +44,20 @@
  */
 void schedBreak(Tick when);
 
+/**
+ * Cause the simulator to execute a breakpoint
+ * relative to the current tick.
+ * @param delta the number of ticks to execute until breaking
+ */
+void schedRelBreak(Tick delta);
+
+/**
+ * Cause the simulator to execute a breakpoint when
+ * the given kernel function is reached
+ * @param funcName the name of the kernel function at which to break
+ */
+void breakAtKernelFunction(const char* funcName);
+
 /** Cause the simulator to return to python to create a checkpoint
  * @param when the cycle to break
  */
@@ -52,8 +66,6 @@ void takeCheckpoint(Tick when);
 /** Dump all the events currently on the event queue
  */
 void eventqDump();
-
-void py_interact();
 
 int getRemoteGDBPort();
 // Remote gdb base port.  0 disables remote gdb.

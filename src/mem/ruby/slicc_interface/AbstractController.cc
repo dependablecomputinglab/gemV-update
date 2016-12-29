@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Mark D. Hill and David A. Wood
+ * Copyright (c) 2011-2014 Mark D. Hill and David A. Wood
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,20 +27,23 @@
  */
 
 #include "mem/ruby/slicc_interface/AbstractController.hh"
+
+#include "debug/RubyQueue.hh"
+#include "mem/protocol/MemoryMsg.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "mem/ruby/system/Sequencer.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/GPUCoalescer.hh"
+#include "sim/system.hh"
 
 AbstractController::AbstractController(const Params *p)
-    : ClockedObject(p), Consumer(this), m_fully_busy_cycles(0),
-    m_request_count(0)
+    : MemObject(p), Consumer(this), m_version(p->version),
+      m_clusterID(p->cluster_id),
+      m_masterId(p->system->getMasterId(name())), m_is_blocking(false),
+      m_number_of_TBEs(p->number_of_TBEs),
+      m_transitions_per_cycle(p->transitions_per_cycle),
+      m_buffer_size(p->buffer_size), m_recycle_latency(p->recycle_latency),
+      memoryPort(csprintf("%s.memory", name()), this, "")
 {
-    m_version = p->version;
-    m_transitions_per_cycle = p->transitions_per_cycle;
-    m_buffer_size = p->buffer_size;
-    m_recycle_latency = p->recycle_latency;
-    m_number_of_TBEs = p->number_of_TBEs;
-    m_is_blocking = false;
-
     if (m_version == 0) {
         // Combine the statistics from all controllers
         // of this particular type.
@@ -52,66 +55,59 @@ void
 AbstractController::init()
 {
     params()->ruby_system->registerAbstractController(this);
-}
-
-void
-AbstractController::clearStats()
-{
-    m_requestProfileMap.clear();
-    m_request_count = 0;
-
-    m_delayHistogram.clear();
-
+    m_delayHistogram.init(10);
     uint32_t size = Network::getNumberOfVirtualNetworks();
-    m_delayVCHistogram.resize(size);
     for (uint32_t i = 0; i < size; i++) {
-        m_delayVCHistogram[i].clear();
-    }
-
-    Sequencer *seq = getSequencer();
-    if (seq != NULL) {
-        seq->clearStats();
+        m_delayVCHistogram.push_back(new Stats::Histogram());
+        m_delayVCHistogram[i]->init(10);
     }
 }
 
 void
-AbstractController::profileRequest(const std::string &request)
+AbstractController::resetStats()
 {
-    m_request_count++;
+    m_delayHistogram.reset();
+    uint32_t size = Network::getNumberOfVirtualNetworks();
+    for (uint32_t i = 0; i < size; i++) {
+        m_delayVCHistogram[i]->reset();
+    }
+}
 
-    // if it doesn't exist, conveniently, it will be created with the
-    // default value which is 0
-    m_requestProfileMap[request]++;
+void
+AbstractController::regStats()
+{
+    MemObject::regStats();
+
+    m_fully_busy_cycles
+        .name(name() + ".fully_busy_cycles")
+        .desc("cycles for which number of transistions == max transitions")
+        .flags(Stats::nozero);
 }
 
 void
 AbstractController::profileMsgDelay(uint32_t virtualNetwork, Cycles delay)
 {
     assert(virtualNetwork < m_delayVCHistogram.size());
-    m_delayHistogram.add(delay);
-    m_delayVCHistogram[virtualNetwork].add(delay);
+    m_delayHistogram.sample(delay);
+    m_delayVCHistogram[virtualNetwork]->sample(delay);
 }
 
 void
-AbstractController::connectWithPeer(AbstractController *c)
-{
-    getQueuesFromPeer(c);
-    c->getQueuesFromPeer(this);
-}
-
-void
-AbstractController::stallBuffer(MessageBuffer* buf, Address addr)
+AbstractController::stallBuffer(MessageBuffer* buf, Addr addr)
 {
     if (m_waiting_buffers.count(addr) == 0) {
         MsgVecType* msgVec = new MsgVecType;
         msgVec->resize(m_in_ports, NULL);
         m_waiting_buffers[addr] = msgVec;
     }
+    DPRINTF(RubyQueue, "stalling %s port %d addr %#x\n", buf, m_cur_in_port,
+            addr);
+    assert(m_in_ports > m_cur_in_port);
     (*(m_waiting_buffers[addr]))[m_cur_in_port] = buf;
 }
 
 void
-AbstractController::wakeUpBuffers(Address addr)
+AbstractController::wakeUpBuffers(Addr addr)
 {
     if (m_waiting_buffers.count(addr) > 0) {
         //
@@ -122,7 +118,8 @@ AbstractController::wakeUpBuffers(Address addr)
              in_port_rank >= 0;
              in_port_rank--) {
             if ((*(m_waiting_buffers[addr]))[in_port_rank] != NULL) {
-                (*(m_waiting_buffers[addr]))[in_port_rank]->reanalyzeMessages(addr);
+                (*(m_waiting_buffers[addr]))[in_port_rank]->
+                    reanalyzeMessages(addr, clockEdge());
             }
         }
         delete m_waiting_buffers[addr];
@@ -131,7 +128,7 @@ AbstractController::wakeUpBuffers(Address addr)
 }
 
 void
-AbstractController::wakeUpAllBuffers(Address addr)
+AbstractController::wakeUpAllBuffers(Addr addr)
 {
     if (m_waiting_buffers.count(addr) > 0) {
         //
@@ -142,7 +139,8 @@ AbstractController::wakeUpAllBuffers(Address addr)
              in_port_rank >= 0;
              in_port_rank--) {
             if ((*(m_waiting_buffers[addr]))[in_port_rank] != NULL) {
-                (*(m_waiting_buffers[addr]))[in_port_rank]->reanalyzeMessages(addr);
+                (*(m_waiting_buffers[addr]))[in_port_rank]->
+                    reanalyzeMessages(addr, clockEdge());
             }
         }
         delete m_waiting_buffers[addr];
@@ -158,16 +156,22 @@ AbstractController::wakeUpAllBuffers()
     //
 
     std::vector<MsgVecType*> wokeUpMsgVecs;
+    MsgBufType wokeUpMsgBufs;
 
-    if(m_waiting_buffers.size() > 0) {
+    if (m_waiting_buffers.size() > 0) {
         for (WaitingBufType::iterator buf_iter = m_waiting_buffers.begin();
              buf_iter != m_waiting_buffers.end();
              ++buf_iter) {
              for (MsgVecType::iterator vec_iter = buf_iter->second->begin();
                   vec_iter != buf_iter->second->end();
                   ++vec_iter) {
-                  if (*vec_iter != NULL) {
-                      (*vec_iter)->reanalyzeAllMessages();
+                  //
+                  // Make sure the MessageBuffer has not already be reanalyzed
+                  //
+                  if (*vec_iter != NULL &&
+                      (wokeUpMsgBufs.count(*vec_iter) == 0)) {
+                      (*vec_iter)->reanalyzeAllMessages(clockEdge());
+                      wokeUpMsgBufs.insert(*vec_iter);
                   }
              }
              wokeUpMsgVecs.push_back(buf_iter->second);
@@ -184,17 +188,177 @@ AbstractController::wakeUpAllBuffers()
 }
 
 void
-AbstractController::blockOnQueue(Address addr, MessageBuffer* port)
+AbstractController::blockOnQueue(Addr addr, MessageBuffer* port)
 {
     m_is_blocking = true;
     m_block_map[addr] = port;
 }
 
+bool
+AbstractController::isBlocked(Addr addr) const
+{
+    return m_is_blocking && (m_block_map.find(addr) != m_block_map.end());
+}
+
 void
-AbstractController::unblock(Address addr)
+AbstractController::unblock(Addr addr)
 {
     m_block_map.erase(addr);
     if (m_block_map.size() == 0) {
        m_is_blocking = false;
     }
+}
+
+bool
+AbstractController::isBlocked(Addr addr)
+{
+    return (m_block_map.count(addr) > 0);
+}
+
+BaseMasterPort &
+AbstractController::getMasterPort(const std::string &if_name,
+                                  PortID idx)
+{
+    return memoryPort;
+}
+
+void
+AbstractController::queueMemoryRead(const MachineID &id, Addr addr,
+                                    Cycles latency)
+{
+    RequestPtr req = new Request(addr, RubySystem::getBlockSizeBytes(), 0,
+                                 m_masterId);
+
+    PacketPtr pkt = Packet::createRead(req);
+    uint8_t *newData = new uint8_t[RubySystem::getBlockSizeBytes()];
+    pkt->dataDynamic(newData);
+
+    SenderState *s = new SenderState(id);
+    pkt->pushSenderState(s);
+
+    // Use functional rather than timing accesses during warmup
+    if (RubySystem::getWarmupEnabled()) {
+        memoryPort.sendFunctional(pkt);
+        recvTimingResp(pkt);
+        return;
+    }
+
+    memoryPort.schedTimingReq(pkt, clockEdge(latency));
+}
+
+void
+AbstractController::queueMemoryWrite(const MachineID &id, Addr addr,
+                                     Cycles latency, const DataBlock &block)
+{
+    RequestPtr req = new Request(addr, RubySystem::getBlockSizeBytes(), 0,
+                                 m_masterId);
+
+    PacketPtr pkt = Packet::createWrite(req);
+    uint8_t *newData = new uint8_t[RubySystem::getBlockSizeBytes()];
+    pkt->dataDynamic(newData);
+    memcpy(newData, block.getData(0, RubySystem::getBlockSizeBytes()),
+           RubySystem::getBlockSizeBytes());
+
+    SenderState *s = new SenderState(id);
+    pkt->pushSenderState(s);
+
+    // Use functional rather than timing accesses during warmup
+    if (RubySystem::getWarmupEnabled()) {
+        memoryPort.sendFunctional(pkt);
+        recvTimingResp(pkt);
+        return;
+    }
+
+    // Create a block and copy data from the block.
+    memoryPort.schedTimingReq(pkt, clockEdge(latency));
+}
+
+void
+AbstractController::queueMemoryWritePartial(const MachineID &id, Addr addr,
+                                            Cycles latency,
+                                            const DataBlock &block, int size)
+{
+    RequestPtr req = new Request(addr, size, 0, m_masterId);
+
+    PacketPtr pkt = Packet::createWrite(req);
+    uint8_t *newData = new uint8_t[size];
+    pkt->dataDynamic(newData);
+    memcpy(newData, block.getData(getOffset(addr), size), size);
+
+    SenderState *s = new SenderState(id);
+    pkt->pushSenderState(s);
+
+    // Create a block and copy data from the block.
+    memoryPort.schedTimingReq(pkt, clockEdge(latency));
+}
+
+void
+AbstractController::functionalMemoryRead(PacketPtr pkt)
+{
+    memoryPort.sendFunctional(pkt);
+}
+
+int
+AbstractController::functionalMemoryWrite(PacketPtr pkt)
+{
+    int num_functional_writes = 0;
+
+    // Check the buffer from the controller to the memory.
+    if (memoryPort.checkFunctional(pkt)) {
+        num_functional_writes++;
+    }
+
+    // Update memory itself.
+    memoryPort.sendFunctional(pkt);
+    return num_functional_writes + 1;
+}
+
+void
+AbstractController::recvTimingResp(PacketPtr pkt)
+{
+    assert(getMemoryQueue());
+    assert(pkt->isResponse());
+
+    std::shared_ptr<MemoryMsg> msg = std::make_shared<MemoryMsg>(clockEdge());
+    (*msg).m_addr = pkt->getAddr();
+    (*msg).m_Sender = m_machineID;
+
+    SenderState *s = dynamic_cast<SenderState *>(pkt->senderState);
+    (*msg).m_OriginalRequestorMachId = s->id;
+    delete s;
+
+    if (pkt->isRead()) {
+        (*msg).m_Type = MemoryRequestType_MEMORY_READ;
+        (*msg).m_MessageSize = MessageSizeType_Response_Data;
+
+        // Copy data from the packet
+        (*msg).m_DataBlk.setData(pkt->getPtr<uint8_t>(), 0,
+                                 RubySystem::getBlockSizeBytes());
+    } else if (pkt->isWrite()) {
+        (*msg).m_Type = MemoryRequestType_MEMORY_WB;
+        (*msg).m_MessageSize = MessageSizeType_Writeback_Control;
+    } else {
+        panic("Incorrect packet type received from memory controller!");
+    }
+
+    getMemoryQueue()->enqueue(msg, clockEdge(), cyclesToTicks(Cycles(1)));
+    delete pkt->req;
+    delete pkt;
+}
+
+bool
+AbstractController::MemoryPort::recvTimingResp(PacketPtr pkt)
+{
+    controller->recvTimingResp(pkt);
+    return true;
+}
+
+AbstractController::MemoryPort::MemoryPort(const std::string &_name,
+                                           AbstractController *_controller,
+                                           const std::string &_label)
+    : QueuedMasterPort(_name, _controller, reqQueue, snoopRespQueue),
+      reqQueue(*_controller, *this, _label),
+      snoopRespQueue(*_controller, *this, _label),
+      controller(_controller)
+{
 }

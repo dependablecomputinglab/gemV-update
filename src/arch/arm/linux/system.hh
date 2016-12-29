@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2012 ARM Limited
+ * Copyright (c) 2010-2013 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -56,7 +56,7 @@
 
 class DumpStatsPCEvent;
 
-class LinuxArmSystem : public ArmSystem
+class LinuxArmSystem : public GenericArmSystem
 {
   protected:
     DumpStatsPCEvent *dumpStatsPCEvent;
@@ -82,20 +82,24 @@ class LinuxArmSystem : public ArmSystem
 
     /** This is a file that is placed in the run directory that prints out
      * mappings between taskIds and OS process IDs */
-    std::ostream* taskFile;
+    OutputStream* taskFile;
 
     LinuxArmSystem(Params *p);
     ~LinuxArmSystem();
 
     void initState();
 
-    bool adderBootUncacheable(Addr a);
-
     void startup();
 
     /** This function creates a new task Id for the given pid.
      * @param tc thread context that is currentyl executing  */
     void mapPid(ThreadContext* tc, uint32_t pid);
+
+  public: // Exported Python methods
+    /**
+     * Dump the kernel's dmesg buffer to stdout
+     */
+    void dumpDmesg();
 
   private:
     /** Event to halt the simulator if the kernel calls panic()  */
@@ -118,14 +122,6 @@ class LinuxArmSystem : public ArmSystem
      */
     Linux::UDelayEvent *constUDelaySkipEvent;
 
-    /** These variables store addresses of important data structures
-     * that are normaly kept coherent at boot with cache mainetence operations.
-     * Since these operations aren't supported in gem5, we keep them coherent
-     * by making them uncacheable until all processors in the system boot.
-     */
-    Addr secDataPtrAddr;
-    Addr secDataAddr;
-    Addr penReleaseAddr;
 };
 
 class DumpStatsPCEvent : public PCEvent

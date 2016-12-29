@@ -46,14 +46,12 @@ class BasicRouter : public ClockedObject
     void init();
 
     void print(std::ostream& out) const;
-
-    friend class Topology;
-
   protected:
     //
     // ID in relation to other routers in the system
     //
     uint32_t m_id;
+    uint32_t m_latency;
 };
 
 inline std::ostream&

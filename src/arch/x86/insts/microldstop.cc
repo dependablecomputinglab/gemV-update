@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2007 The Hewlett-Packard Development Company
+ * Copyright (c) 2015 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -49,11 +50,28 @@ namespace X86ISA
         std::stringstream response;
 
         printMnemonic(response, instMnem, mnemonic);
-        if(flags[IsLoad])
+        if (flags[IsLoad])
             printDestReg(response, 0, dataSize);
         else
             printSrcReg(response, 2, dataSize);
         response << ", ";
+        printMem(response, segment, scale, index, base, disp,
+                addressSize, false);
+        return response.str();
+    }
+
+    std::string LdStSplitOp::generateDisassembly(Addr pc,
+            const SymbolTable *symtab) const
+    {
+        std::stringstream response;
+
+        printMnemonic(response, instMnem, mnemonic);
+        int baseRegIdx = flags[IsLoad] ? 0 : 2;
+        response << "[";
+        printDestReg(response, baseRegIdx, dataSize);
+        response << ", ";
+        printDestReg(response, baseRegIdx+1, dataSize);
+        response << "], ";
         printMem(response, segment, scale, index, base, disp,
                 addressSize, false);
         return response.str();

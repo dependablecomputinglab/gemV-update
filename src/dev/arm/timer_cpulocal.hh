@@ -55,7 +55,7 @@ class BaseGic;
 class CpuLocalTimer : public BasicPioDevice
 {
   protected:
-    class Timer
+    class Timer : public Serializable
     {
 
       public:
@@ -145,8 +145,8 @@ class CpuLocalTimer : public BasicPioDevice
         /** Handle write for a single timer */
         void write(PacketPtr pkt, Addr daddr);
 
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
 
         friend class CpuLocalTimer;
     };
@@ -177,18 +177,17 @@ class CpuLocalTimer : public BasicPioDevice
      * @param pkt The memory request.
      * @return Returns latency of device read
      */
-    virtual Tick read(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
 
     /**
      * Handle a write to the device.
      * @param pkt The memory request.
      * @return Returns latency of device write
      */
-    virtual Tick write(PacketPtr pkt);
+    Tick write(PacketPtr pkt) override;
 
-
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 

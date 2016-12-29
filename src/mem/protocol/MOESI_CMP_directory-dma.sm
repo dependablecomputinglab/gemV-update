@@ -27,22 +27,28 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-machine(DMA, "DMA Controller") 
-: DMASequencer * dma_sequencer,
-  Cycles request_latency = 14,
-  Cycles response_latency = 14
-{
-  MessageBuffer responseFromDir, network="From", virtual_network="2", ordered="false", vnet_type="response";
+machine(MachineType:DMA, "DMA Controller")
+    : DMASequencer * dma_sequencer;
+      Cycles request_latency := 14;
+      Cycles response_latency := 14;
 
-  MessageBuffer reqToDir, network="To", virtual_network="1", ordered="false", vnet_type="request";
-  MessageBuffer respToDir, network="To", virtual_network="2", ordered="false", vnet_type="dmaresponse";
-  
+      MessageBuffer * responseFromDir, network="From", virtual_network="2",
+            vnet_type="response";
+
+      MessageBuffer * reqToDir, network="To", virtual_network="1",
+            vnet_type="request";
+      MessageBuffer * respToDir, network="To", virtual_network="2",
+            vnet_type="dmaresponse";
+
+      MessageBuffer * mandatoryQueue;
+      MessageBuffer * triggerQueue;
+{
   state_declaration(State, desc="DMA states", default="DMA_State_READY") {
     READY, AccessPermission:Invalid, desc="Ready to accept a new request";
     BUSY_RD, AccessPermission:Busy, desc="Busy: currently processing a request";
     BUSY_WR, AccessPermission:Busy, desc="Busy: currently processing a request";
   }
-  
+
   enumeration(Event, desc="DMA events") {
     ReadRequest,  desc="A new read request";
     WriteRequest, desc="A new write request";
@@ -53,47 +59,45 @@ machine(DMA, "DMA Controller")
   }
 
   structure(TBE, desc="...") {
-    Address address, desc="Physical address";
+    Addr address, desc="Physical address";
     int NumAcks, default="0", desc="Number of Acks pending";
     DataBlock DataBlk, desc="Data";
   }
 
-  structure(DMASequencer, external = "yes") {
-    void ackCallback();
-    void dataCallback(DataBlock);
-  }
-
   structure(TBETable, external = "yes") {
-    TBE lookup(Address);
-    void allocate(Address);
-    void deallocate(Address);
-    bool isPresent(Address);
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
   }
 
-  MessageBuffer mandatoryQueue, ordered="false";
-  MessageBuffer triggerQueue, ordered="true";
   TBETable TBEs, template="<DMA_TBE>", constructor="m_number_of_TBEs";
   State cur_state;
 
+  Tick clockEdge();
   void set_tbe(TBE b);
   void unset_tbe();
 
-  State getState(TBE tbe, Address addr) {
+  State getState(TBE tbe, Addr addr) {
     return cur_state;
   }
-  void setState(TBE tbe, Address addr, State state) {
+  void setState(TBE tbe, Addr addr, State state) {
   cur_state := state;
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  AccessPermission getAccessPermission(Addr addr) {
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Address addr, State state) {
+  void setAccessPermission(Addr addr, State state) {
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
-     error("DMA Controller does not support getDataBlock().\n");
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("DMA does not support functional read.");
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("DMA does not support functional write.");
   }
 
   out_port(reqToDirectory_out, RequestMsg, reqToDir, desc="...");
@@ -101,7 +105,7 @@ machine(DMA, "DMA Controller")
   out_port(triggerQueue_out, TriggerMsg, triggerQueue, desc="...");
 
   in_port(dmaRequestQueue_in, SequencerMsg, mandatoryQueue, desc="...") {
-    if (dmaRequestQueue_in.isReady()) {
+    if (dmaRequestQueue_in.isReady(clockEdge())) {
       peek(dmaRequestQueue_in, SequencerMsg) {
         if (in_msg.Type == SequencerRequestType:LD ) {
           trigger(Event:ReadRequest, in_msg.LineAddress,
@@ -117,18 +121,18 @@ machine(DMA, "DMA Controller")
   }
 
   in_port(dmaResponseQueue_in, ResponseMsg, responseFromDir, desc="...") {
-    if (dmaResponseQueue_in.isReady()) {
+    if (dmaResponseQueue_in.isReady(clockEdge())) {
       peek( dmaResponseQueue_in, ResponseMsg) {
         if (in_msg.Type == CoherenceResponseType:DMA_ACK) {
-          trigger(Event:DMA_Ack, makeLineAddress(in_msg.Addr),
-                  TBEs[makeLineAddress(in_msg.Addr)]);
+          trigger(Event:DMA_Ack, makeLineAddress(in_msg.addr),
+                  TBEs[makeLineAddress(in_msg.addr)]);
         } else if (in_msg.Type == CoherenceResponseType:DATA_EXCLUSIVE ||
        in_msg.Type == CoherenceResponseType:DATA) {
-          trigger(Event:Data, makeLineAddress(in_msg.Addr),
-                  TBEs[makeLineAddress(in_msg.Addr)]);
+          trigger(Event:Data, makeLineAddress(in_msg.addr),
+                  TBEs[makeLineAddress(in_msg.addr)]);
         } else if (in_msg.Type == CoherenceResponseType:ACK) {
-          trigger(Event:Inv_Ack, makeLineAddress(in_msg.Addr),
-                  TBEs[makeLineAddress(in_msg.Addr)]);
+          trigger(Event:Inv_Ack, makeLineAddress(in_msg.addr),
+                  TBEs[makeLineAddress(in_msg.addr)]);
         } else {
           error("Invalid response type");
         }
@@ -138,10 +142,10 @@ machine(DMA, "DMA Controller")
 
   // Trigger Queue
   in_port(triggerQueue_in, TriggerMsg, triggerQueue) {
-    if (triggerQueue_in.isReady()) {
+    if (triggerQueue_in.isReady(clockEdge())) {
       peek(triggerQueue_in, TriggerMsg) {
         if (in_msg.Type == TriggerType:ALL_ACKS) {
-          trigger(Event:All_Acks, in_msg.Addr, TBEs[in_msg.Addr]);
+          trigger(Event:All_Acks, in_msg.addr, TBEs[in_msg.addr]);
         } else {
           error("Unexpected message");
         }
@@ -151,8 +155,8 @@ machine(DMA, "DMA Controller")
 
   action(s_sendReadRequest, "s", desc="Send a DMA read request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, RequestMsg, latency=request_latency) {
-        out_msg.Addr := in_msg.PhysicalAddress;
+      enqueue(reqToDirectory_out, RequestMsg, request_latency) {
+        out_msg.addr := in_msg.PhysicalAddress;
         out_msg.Type := CoherenceRequestType:DMA_READ;
         out_msg.DataBlk := in_msg.DataBlk;
         out_msg.Len := in_msg.Len;
@@ -166,8 +170,8 @@ machine(DMA, "DMA Controller")
 
   action(s_sendWriteRequest, "\s", desc="Send a DMA write request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, RequestMsg, latency=request_latency) {
-          out_msg.Addr := in_msg.PhysicalAddress;
+      enqueue(reqToDirectory_out, RequestMsg, request_latency) {
+          out_msg.addr := in_msg.PhysicalAddress;
           out_msg.Type := CoherenceRequestType:DMA_WRITE;
           out_msg.DataBlk := in_msg.DataBlk;
           out_msg.Len := in_msg.Len;
@@ -180,14 +184,14 @@ machine(DMA, "DMA Controller")
   }
 
   action(a_ackCallback, "a", desc="Notify dma controller that write request completed") {
-      dma_sequencer.ackCallback();
+      dma_sequencer.ackCallback(address);
   }
 
   action(o_checkForCompletion, "o", desc="Check if we have received all the messages required for completion") {
     assert(is_valid(tbe));
     if (tbe.NumAcks == 0) {
       enqueue(triggerQueue_out, TriggerMsg) {
-        out_msg.Addr := address;
+        out_msg.addr := address;
         out_msg.Type := TriggerType:ALL_ACKS;
       }
     }
@@ -201,8 +205,8 @@ machine(DMA, "DMA Controller")
   }
 
   action( u_sendExclusiveUnblockToDir, "\u", desc="send exclusive unblock to directory") {
-    enqueue(respToDirectory_out, ResponseMsg, latency=response_latency) {
-      out_msg.Addr := address;
+    enqueue(respToDirectory_out, ResponseMsg, response_latency) {
+      out_msg.addr := address;
       out_msg.Type := CoherenceResponseType:UNBLOCK_EXCLUSIVE;
       out_msg.Destination.add(map_Address_to_Directory(address));
       out_msg.Sender := machineID;
@@ -212,15 +216,15 @@ machine(DMA, "DMA Controller")
   }
 
   action(p_popRequestQueue, "p", desc="Pop request queue") {
-    dmaRequestQueue_in.dequeue();
+    dmaRequestQueue_in.dequeue(clockEdge());
   }
 
   action(p_popResponseQueue, "\p", desc="Pop request queue") {
-    dmaResponseQueue_in.dequeue();
+    dmaResponseQueue_in.dequeue(clockEdge());
   }
 
   action(p_popTriggerQueue, "pp", desc="Pop trigger queue") {
-    triggerQueue_in.dequeue();
+    triggerQueue_in.dequeue(clockEdge());
   }
 
   action(t_updateTBEData, "t", desc="Update TBE Data") {
@@ -232,7 +236,7 @@ machine(DMA, "DMA Controller")
 
   action(d_dataCallbackFromTBE, "/d", desc="data callback with data from TBE") {
     assert(is_valid(tbe));
-    dma_sequencer.dataCallback(tbe.DataBlk);
+    dma_sequencer.dataCallback(tbe.DataBlk, address);
   }
 
   action(v_allocateTBE, "v", desc="Allocate TBE entry") {
@@ -244,11 +248,6 @@ machine(DMA, "DMA Controller")
     TBEs.deallocate(address);
     unset_tbe();
   }
-
-  action(z_stall, "z", desc="dma is busy..stall") {
-    // do nothing
-  }
-
 
 
   transition(READY, ReadRequest, BUSY_RD) {
@@ -298,7 +297,7 @@ machine(DMA, "DMA Controller")
   }
 
   transition(BUSY_WR, All_Acks, READY) {
-    a_ackCallback; 
+    a_ackCallback;
     u_sendExclusiveUnblockToDir;
     w_deallocateTBE;
     p_popTriggerQueue;

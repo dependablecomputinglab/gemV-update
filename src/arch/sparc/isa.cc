@@ -173,7 +173,7 @@ ISA::clear()
 }
 
 MiscReg
-ISA::readMiscRegNoEffect(int miscReg)
+ISA::readMiscRegNoEffect(int miscReg) const
 {
 
   // The three miscRegs are moved up from the switch statement
@@ -591,9 +591,9 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
         {
             tl = val;
             if (hpstate.tlz && tl == 0 && !hpstate.hpriv)
-                tc->getCpuPtr()->postInterrupt(IT_TRAP_LEVEL_ZERO, 0);
+                tc->getCpuPtr()->postInterrupt(0, IT_TRAP_LEVEL_ZERO, 0);
             else
-                tc->getCpuPtr()->clearInterrupt(IT_TRAP_LEVEL_ZERO, 0);
+                tc->getCpuPtr()->clearInterrupt(0, IT_TRAP_LEVEL_ZERO, 0);
             return;
         }
       case MISCREG_CWP:
@@ -638,7 +638,7 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
 }
 
 void
-ISA::serialize(std::ostream &os)
+ISA::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(asi);
     SERIALIZE_SCALAR(tick);
@@ -714,7 +714,7 @@ ISA::serialize(std::ostream &os)
 }
 
 void
-ISA::unserialize(Checkpoint *cp, const std::string &section)
+ISA::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(asi);
     UNSERIALIZE_SCALAR(tick);

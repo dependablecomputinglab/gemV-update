@@ -46,9 +46,9 @@
  * Definitions of BaseTags.
  */
 
-#include "config/the_isa.hh"
-#include "cpu/smt.hh" //maxThreadsPerCPU
 #include "mem/cache/tags/base.hh"
+
+#include "cpu/smt.hh" //maxThreadsPerCPU
 #include "mem/cache/base.hh"
 #include "sim/sim_exit.hh"
 
@@ -56,20 +56,30 @@ using namespace std;
 
 BaseTags::BaseTags(const Params *p)
     : ClockedObject(p), blkSize(p->block_size), size(p->size),
-      hitLatency(p->hit_latency), enableVulAnalysis(p->vul_analysis)      //VUL_TAG
+      lookupLatency(p->tag_latency),
+      accessLatency(p->sequential_access ?
+                    p->tag_latency + p->data_latency :
+                    std::max(p->tag_latency, p->data_latency)),
+      cache(nullptr), warmupBound(0),
+      warmedUp(false), numBlocks(0),
+      enableVulAnalysis(p->vul_analysis)      //VUL_TAG
 {
 }
 
 void
 BaseTags::setCache(BaseCache *_cache)
 {
+    assert(!cache);
     cache = _cache;
 }
 
 void
 BaseTags::regStats()
 {
+    ClockedObject::regStats();
+
     using namespace Stats;
+
     replacements
         .init(maxThreadsPerCPU)
         .name(name() + ".replacements")
@@ -129,6 +139,40 @@ BaseTags::regStats()
         .name(name() + ".vulnerability")
         .desc("Vulnerability of tag arrays in bit-ticks")
         ;
+
+    occupanciesTaskId
+        .init(ContextSwitchTaskId::NumTaskId)
+        .name(name() + ".occ_task_id_blocks")
+        .desc("Occupied blocks per task id")
+        .flags(nozero | nonan)
+        ;
+
+    ageTaskId
+        .init(ContextSwitchTaskId::NumTaskId, 5)
+        .name(name() + ".age_task_id_blocks")
+        .desc("Occupied blocks per task id")
+        .flags(nozero | nonan)
+        ;
+
+    percentOccsTaskId
+        .name(name() + ".occ_task_id_percent")
+        .desc("Percentage of cache occupancy per task id")
+        .flags(nozero)
+        ;
+
+    percentOccsTaskId = occupanciesTaskId / Stats::constant(numBlocks);
+
+    tagAccesses
+        .name(name() + ".tag_accesses")
+        .desc("Number of tag accesses")
+        ;
+
+    dataAccesses
+        .name(name() + ".data_accesses")
+        .desc("Number of data accesses")
+        ;
+
+    registerDumpCallback(new BaseTagsDumpCallback(this));
 
     registerExitCallback(new BaseTagsCallback(this));
 }

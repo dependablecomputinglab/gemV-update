@@ -76,9 +76,7 @@ InvalidateGenerator::initiate()
     } else {
         panic("initiate was unexpectedly called\n");
     }
-    uint8_t* dummyData = new uint8_t;
-    *dummyData = 0;
-    pkt->dataDynamic(dummyData);
+    pkt->allocate();
 
     if (port->sendTimingReq(pkt)) {
         DPRINTF(DirectedTest, "initiating request - successful\n");
@@ -100,10 +98,10 @@ InvalidateGenerator::initiate()
     }
 }
 
-void 
+void
 InvalidateGenerator::performCallback(uint32_t proc, Addr address)
 {
-    assert(m_address == address);  
+    assert(m_address == address);
 
     if (m_status == InvalidateGeneratorStatus_Load_Pending) {
         assert(m_active_read_node == proc);
@@ -130,8 +128,8 @@ InvalidateGenerator::performCallback(uint32_t proc, Addr address)
         //
         m_directed_tester->incrementCycleCompletions();
         m_status = InvalidateGeneratorStatus_Load_Waiting;
-    } 
-    
+    }
+
 }
 
 InvalidateGenerator *

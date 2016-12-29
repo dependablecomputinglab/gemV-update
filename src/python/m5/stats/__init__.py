@@ -41,6 +41,7 @@ def initText(filename, desc=True):
 
 def initSimStats():
     internal.stats.initSimStats()
+    internal.stats.registerPythonStatsHandlers()
 
 names = []
 stats_dict = {}
@@ -67,7 +68,8 @@ def enable():
 
     for stat in stats_list:
         if not stat.check() or not stat.baseCheck():
-            fatal("stat check failed for '%s' %d\n", stat.name, stat.id)
+            fatal("statistic '%s' (%d) was not properly initialized " \
+                  "by a regStats() function\n", stat.name, stat.id)
 
         if not (stat.flags & flags.display):
             stat.name = "__Stat%06d" % stat.id

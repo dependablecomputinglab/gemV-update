@@ -45,13 +45,15 @@
  * Definition of BaseCache functions.
  */
 
+#include "mem/cache/base.hh"
+
 #include "debug/Cache.hh"
 #include "debug/Drain.hh"
-#include "mem/cache/tags/fa_lru.hh"
-#include "mem/cache/tags/lru.hh"
-#include "mem/cache/base.hh"
 #include "mem/cache/cache.hh"
 #include "mem/cache/mshr.hh"
+#include "mem/cache/tags/fa_lru.hh"
+#include "mem/cache/tags/lru.hh"
+#include "mem/cache/tags/random_repl.hh"
 #include "sim/full_system.hh"
 
 using namespace std;
@@ -64,19 +66,23 @@ BaseCache::CacheSlavePort::CacheSlavePort(const std::string &_name,
 {
 }
 
-BaseCache::BaseCache(const Params *p)
+BaseCache::BaseCache(const BaseCacheParams *p, unsigned blk_size)
     : MemObject(p),
-      mshrQueue("MSHRs", p->mshrs, 4, MSHRQueue_MSHRs),
-      writeBuffer("write buffer", p->write_buffers, p->mshrs+1000,
-                  MSHRQueue_WriteBuffer),
-      blkSize(p->system->cacheLineSize()),
-      hitLatency(p->hit_latency),
+      cpuSidePort(nullptr), memSidePort(nullptr),
+      mshrQueue("MSHRs", p->mshrs, 0, p->demand_mshr_reserve), // see below
+      writeBuffer("write buffer", p->write_buffers, p->mshrs), // see below
+      blkSize(blk_size),
+      lookupLatency(p->tag_latency),
+      dataLatency(p->data_latency),
+      forwardLatency(p->tag_latency),
+      fillLatency(p->data_latency),
       responseLatency(p->response_latency),
       numTarget(p->tgts_per_mshr),
-      forwardSnoops(p->forward_snoops),
-      isTopLevel(p->is_top_level),
+      forwardSnoops(true),
+      isReadOnly(p->is_read_only),
       blocked(0),
-      noTargetMSHR(NULL),
+      order(0),
+      noTargetMSHR(nullptr),
       missCount(p->max_miss_count),
       addrRanges(p->addr_ranges.begin(), p->addr_ranges.end()),
       system(p->system),
@@ -84,20 +90,28 @@ BaseCache::BaseCache(const Params *p)
       enableVulAnal(p->vul_analysis),
       protectionMode(p->protection_policy)
 {
+    // the MSHR queue has no reserve entries as we check the MSHR
+    // queue on every single allocation, whereas the write queue has
+    // as many reserve entries as we have MSHRs, since every MSHR may
+    // eventually require a writeback, and we do not check the write
+    // buffer before committing to an MSHR
+
+    // forward snoops is overridden in init() once we can query
+    // whether the connected master is actually snooping or not
 }
 
 void
 BaseCache::CacheSlavePort::setBlocked()
 {
     assert(!blocked);
-    DPRINTF(CachePort, "Cache port %s blocking new requests\n", name());
+    DPRINTF(CachePort, "Port is blocking new requests\n");
     blocked = true;
     // if we already scheduled a retry in this cycle, but it has not yet
     // happened, cancel it
     if (sendRetryEvent.scheduled()) {
-       owner.deschedule(sendRetryEvent);
-       DPRINTF(CachePort, "Cache port %s deschedule retry\n", name());
-       mustSendRetry = true;
+        owner.deschedule(sendRetryEvent);
+        DPRINTF(CachePort, "Port descheduled retry\n");
+        mustSendRetry = true;
     }
 }
 
@@ -105,16 +119,23 @@ void
 BaseCache::CacheSlavePort::clearBlocked()
 {
     assert(blocked);
-    DPRINTF(CachePort, "Cache port %s accepting new requests\n", name());
+    DPRINTF(CachePort, "Port is accepting new requests\n");
     blocked = false;
     if (mustSendRetry) {
-        DPRINTF(CachePort, "Cache port %s sending retry\n", name());
-        mustSendRetry = false;
-        // @TODO: need to find a better time (next bus cycle?)
+        // @TODO: need to find a better time (next cycle?)
         owner.schedule(sendRetryEvent, curTick() + 1);
     }
 }
 
+void
+BaseCache::CacheSlavePort::processSendRetry()
+{
+    DPRINTF(CachePort, "Port is sending retry\n");
+
+    // reset the flag and call retry
+    mustSendRetry = false;
+    sendRetryReq();
+}
 
 void
 BaseCache::init()
@@ -122,6 +143,7 @@ BaseCache::init()
     if (!cpuSidePort->isConnected() || !memSidePort->isConnected())
         fatal("Cache ports on %s are not connected\n", name());
     cpuSidePort->sendRangeChange();
+    forwardSnoops = cpuSidePort->isSnooping();
 }
 
 BaseMasterPort &
@@ -144,9 +166,22 @@ BaseCache::getSlavePort(const std::string &if_name, PortID idx)
     }
 }
 
+bool
+BaseCache::inRange(Addr addr) const
+{
+    for (const auto& r : addrRanges) {
+        if (r.contains(addr)) {
+            return true;
+       }
+    }
+    return false;
+}
+
 void
 BaseCache::regStats()
 {
+    MemObject::regStats();
+
     using namespace Stats;
 
     // Hit statistics
@@ -169,7 +204,8 @@ BaseCache::regStats()
 // to change the subset of commands that are considered "demand" vs
 // "non-demand"
 #define SUM_DEMAND(s) \
-    (s[MemCmd::ReadReq] + s[MemCmd::WriteReq] + s[MemCmd::ReadExReq])
+    (s[MemCmd::ReadReq] + s[MemCmd::WriteReq] + s[MemCmd::WriteLineReq] + \
+     s[MemCmd::ReadExReq] + s[MemCmd::ReadCleanReq] + s[MemCmd::ReadSharedReq])
 
 // should writebacks be included here?  prior code was inconsistent...
 #define SUM_NON_DEMAND(s) \
@@ -405,14 +441,10 @@ BaseCache::regStats()
 
     avg_blocked = blocked_cycles / blocked_causes;
 
-    fastWrites
-        .name(name() + ".fast_writes")
-        .desc("number of fast writes performed")
-        ;
-
-    cacheCopies
-        .name(name() + ".cache_copies")
-        .desc("number of cache copies performed")
+    unusedPrefetches
+        .name(name() + ".unused_prefetches")
+        .desc("number of HardPF blocks evicted w/o reference")
+        .flags(nozero)
         ;
 
     writebacks
@@ -574,7 +606,8 @@ BaseCache::regStats()
             .flags(total | nozero | nonan)
             ;
         for (int i = 0; i < system->maxMasters(); i++) {
-            mshr_uncacheable_lat[access_idx].subname(i, system->getMasterName(i));
+            mshr_uncacheable_lat[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -674,7 +707,8 @@ BaseCache::regStats()
             mshr_miss_latency[access_idx] / mshr_misses[access_idx];
 
         for (int i = 0; i < system->maxMasters(); i++) {
-            avgMshrMissLatency[access_idx].subname(i, system->getMasterName(i));
+            avgMshrMissLatency[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -712,7 +746,8 @@ BaseCache::regStats()
             mshr_uncacheable_lat[access_idx] / mshr_uncacheable[access_idx];
 
         for (int i = 0; i < system->maxMasters(); i++) {
-            avgMshrUncacheableLatency[access_idx].subname(i, system->getMasterName(i));
+            avgMshrUncacheableLatency[access_idx].subname(
+                i, system->getMasterName(i));
         }
     }
 
@@ -721,36 +756,11 @@ BaseCache::regStats()
         .desc("average overall mshr uncacheable latency")
         .flags(total | nozero | nonan)
         ;
-    overallAvgMshrUncacheableLatency = overallMshrUncacheableLatency / overallMshrUncacheable;
+    overallAvgMshrUncacheableLatency =
+        overallMshrUncacheableLatency / overallMshrUncacheable;
     for (int i = 0; i < system->maxMasters(); i++) {
         overallAvgMshrUncacheableLatency.subname(i, system->getMasterName(i));
     }
-
-    mshr_cap_events
-        .init(system->maxMasters())
-        .name(name() + ".mshr_cap_events")
-        .desc("number of times MSHR cap was activated")
-        .flags(total | nozero | nonan)
-        ;
-    for (int i = 0; i < system->maxMasters(); i++) {
-        mshr_cap_events.subname(i, system->getMasterName(i));
-    }
-
-    //software prefetching stats
-    soft_prefetch_mshr_full
-        .init(system->maxMasters())
-        .name(name() + ".soft_prefetch_mshr_full")
-        .desc("number of mshr full events for SW prefetching instrutions")
-        .flags(total | nozero | nonan)
-        ;
-    for (int i = 0; i < system->maxMasters(); i++) {
-        soft_prefetch_mshr_full.subname(i, system->getMasterName(i));
-    }
-
-    mshr_no_allocate_misses
-        .name(name() +".no_allocate_misses")
-        .desc("Number of misses that were no-allocate")
-        ;
 
     cacheVul
         .name(name() + ".vulnerability")
@@ -767,41 +777,4 @@ BaseCache::regStats()
         .desc("Write Buffer vulnerability")
         ;
 
-}
-
-unsigned int
-BaseCache::drain(DrainManager *dm)
-{
-    int count = memSidePort->drain(dm) + cpuSidePort->drain(dm) +
-        mshrQueue.drain(dm) + writeBuffer.drain(dm);
-
-    // Set status
-    if (count != 0) {
-        setDrainState(Drainable::Draining);
-        DPRINTF(Drain, "Cache not drained\n");
-        return count;
-    }
-
-    setDrainState(Drainable::Drained);
-    return 0;
-}
-
-BaseCache *
-BaseCacheParams::create()
-{
-    unsigned numSets = size / (assoc * system->cacheLineSize());
-
-    assert(tags);
-
-    if (dynamic_cast<FALRU*>(tags)) {
-        if (numSets != 1)
-            fatal("Got FALRU tags with more than one set\n");
-        return new Cache<FALRU>(this);
-    } else if (dynamic_cast<LRU*>(tags)) {
-        if (numSets == 1)
-            warn("Consider using FALRU tags for a fully associative cache\n");
-        return new Cache<LRU>(this);
-    } else {
-        fatal("No suitable tags selected\n");
-    }
 }

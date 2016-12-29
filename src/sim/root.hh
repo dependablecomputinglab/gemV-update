@@ -106,15 +106,14 @@ class Root : public SimObject
 
     /** Schedule the timesync event at loadState() so that curTick is correct
      */
-    void loadState(Checkpoint *cp);
+    void loadState(CheckpointIn &cp) override;
 
     /** Schedule the timesync event at initState() when not unserializing
      */
-    void initState();
+    void initState() override;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
-
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 #endif // __SIM_ROOT_HH__

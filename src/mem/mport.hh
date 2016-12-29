@@ -49,7 +49,7 @@
 /*
  * This file defines a port class which is used for sending and receiving
  * messages. These messages are atomic units which don't interact and
- * should be smaller than a cache block. This class is based on 
+ * should be smaller than a cache block. This class is based on
  * the underpinnings of SimpleTimingPort, but it tweaks some of the external
  * functions.
  */
@@ -76,7 +76,8 @@ class MessageMasterPort : public QueuedMasterPort
   public:
 
     MessageMasterPort(const std::string &name, MemObject *owner) :
-        QueuedMasterPort(name, owner, queue), queue(*owner, *this)
+        QueuedMasterPort(name, owner, reqQueue, snoopRespQueue),
+        reqQueue(*owner, *this), snoopRespQueue(*owner, *this)
     {}
 
     virtual ~MessageMasterPort()
@@ -87,7 +88,8 @@ class MessageMasterPort : public QueuedMasterPort
   protected:
 
     /** A packet queue for outgoing packets. */
-    MasterPacketQueue queue;
+    ReqPacketQueue reqQueue;
+    SnoopRespPacketQueue snoopRespQueue;
 
     // Accept and ignore responses.
     virtual Tick recvResponse(PacketPtr pkt)

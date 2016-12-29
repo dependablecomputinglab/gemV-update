@@ -85,8 +85,11 @@ namespace BitfieldBackend
         template<int first, int last=first>
         class Bitfield : public BitfieldBase<Type>
         {
+            static_assert(first >= last,
+                          "Bitfield ranges must be specified as <msb, lsb>");
+
           public:
-            operator const uint64_t () const
+            operator uint64_t () const
             {
                 return this->getBits(first, last);
             }
@@ -96,6 +99,12 @@ namespace BitfieldBackend
             {
                 this->setBits(first, last, _data);
                 return _data;
+            }
+
+            uint64_t
+            operator=(Bitfield<first, last> const & other)
+            {
+                return *this = (uint64_t)other;
             }
         };
 
@@ -110,6 +119,9 @@ namespace BitfieldBackend
           private:
             uint64_t
             operator=(const uint64_t _data);
+
+            uint64_t
+            operator=(const Bitfield<first, last>& other);
         };
 
         //Similar to the above, but only allows writing.
@@ -117,7 +129,7 @@ namespace BitfieldBackend
         class BitfieldWO : public Bitfield<first, last>
         {
           private:
-            operator const uint64_t () const;
+            operator uint64_t () const;
 
           public:
             using Bitfield<first, last>::operator=;
@@ -136,7 +148,7 @@ namespace BitfieldBackend
         class SignedBitfield : public BitfieldBase<Type>
         {
           public:
-            operator const int64_t () const
+            operator int64_t () const
             {
                 return sext<first - last + 1>(this->getBits(first, last));
             }
@@ -146,6 +158,12 @@ namespace BitfieldBackend
             {
                 this->setBits(first, last, _data);
                 return _data;
+            }
+
+            int64_t
+            operator=(SignedBitfield<first, last> const & other)
+            {
+                return *this = (int64_t)other;
             }
         };
 
@@ -160,6 +178,9 @@ namespace BitfieldBackend
           private:
             int64_t
             operator=(const int64_t _data);
+
+            int64_t
+            operator=(const SignedBitfield<first, last>& other);
         };
 
         //Similar to the above, but only allows writing.
@@ -167,14 +188,10 @@ namespace BitfieldBackend
         class SignedBitfieldWO : public SignedBitfield<first, last>
         {
           private:
-            operator const int64_t () const;
+            operator int64_t () const;
 
           public:
-            int64_t operator=(const int64_t _data)
-            {
-                *((SignedBitfield<first, last> *)this) = _data;
-                return _data;
-            }
+            using SignedBitfield<first, last>::operator=;
         };
     };
 
@@ -210,6 +227,13 @@ namespace BitfieldBackend
         {
             Base::__data = _data;
             return _data;
+        }
+
+        Type
+        operator=(BitUnionOperators const & other)
+        {
+            Base::__data = other;
+            return Base::__data;
         }
 
         bool
@@ -280,10 +304,10 @@ namespace BitfieldBackend
 //do so.
 #define EndSubBitUnion(name) \
         }; \
-        inline operator const __DataType () const \
+        inline operator __DataType () const \
         { return __data; } \
         \
-        inline const __DataType operator = (const __DataType & _data) \
+        inline __DataType operator = (const __DataType & _data) \
         { return __data = _data;} \
     } name;
 

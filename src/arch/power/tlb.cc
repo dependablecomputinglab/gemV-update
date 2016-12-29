@@ -150,7 +150,7 @@ TLB::checkCacheability(RequestPtr &req)
     if ((req->getVaddr() & VAddrUncacheable) == VAddrUncacheable) {
 
         // mark request as uncacheable
-        req->setFlags(Request::UNCACHEABLE);
+        req->setFlags(Request::UNCACHEABLE | Request::STRICT_ORDER);
     }
     return NoFault;
 }
@@ -165,7 +165,7 @@ TLB::insertAt(PowerISA::PTE &pte, unsigned Index, int _smallPages)
     } else {
 
         // Update TLB
-        if (table[Index].V0 == true || table[Index].V1 == true) {
+        if (table[Index].V0 || table[Index].V1) {
 
             // Previous entry is valid
             PageTable::iterator i = lookupTable.find(table[Index].VPN);
@@ -195,25 +195,25 @@ TLB::flushAll()
 }
 
 void
-TLB::serialize(ostream &os)
+TLB::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(size);
     SERIALIZE_SCALAR(nlu);
 
     for (int i = 0; i < size; i++) {
-        nameOut(os, csprintf("%s.PTE%d", name(), i));
-        table[i].serialize(os);
+        ScopedCheckpointSection sec(cp, csprintf("PTE%d", i));
+        table[i].serialize(cp);
     }
 }
 
 void
-TLB::unserialize(Checkpoint *cp, const string &section)
+TLB::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(size);
     UNSERIALIZE_SCALAR(nlu);
 
     for (int i = 0; i < size; i++) {
-        table[i].unserialize(cp, csprintf("%s.PTE%d", section, i));
+        ScopedCheckpointSection sec(cp, csprintf("PTE%d", i));
         if (table[i].V0 || table[i].V1) {
             lookupTable.insert(make_pair(table[i].VPN, i));
         }
@@ -223,6 +223,8 @@ TLB::unserialize(Checkpoint *cp, const string &section)
 void
 TLB::regStats()
 {
+    BaseTLB::regStats();
+
     read_hits
         .name(name() + ".read_hits")
         .desc("DTB read hits")
@@ -282,7 +284,7 @@ TLB::translateInst(RequestPtr req, ThreadContext *tc)
     if (req->getVaddr() & 0x3) {
         DPRINTF(TLB, "Alignment Fault on %#x, size = %d\n", req->getVaddr(),
                 req->getSize());
-        return new AlignmentFault();
+        return std::make_shared<AlignmentFault>();
     }
 
      Process * p = tc->getProcessPtr();

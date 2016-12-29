@@ -56,10 +56,10 @@ PowerLiveProcess::PowerLiveProcess(LiveProcessParams *params,
 
     // Set up break point (Top of Heap)
     brk_point = objFile->dataBase() + objFile->dataSize() + objFile->bssSize();
-    brk_point = roundUp(brk_point, VMPageSize);
+    brk_point = roundUp(brk_point, PageBytes);
 
     // Set up region for mmaps. For now, start at bottom of kuseg space.
-    mmap_start = mmap_end = 0x70000000L;
+    mmap_end = 0x70000000L;
 }
 
 void
@@ -67,7 +67,7 @@ PowerLiveProcess::initState()
 {
     Process::initState();
 
-    argsInit(MachineBytes, VMPageSize);
+    argsInit(MachineBytes, PageBytes);
 }
 
 void
@@ -85,6 +85,9 @@ PowerLiveProcess::argsInit(int intSize, int pageSize)
     //We want 16 byte alignment
     uint64_t align = 16;
 
+    // Patch the ld_bias for dynamic executables.
+    updateBias();
+
     // load object file into target memory
     objFile->loadSections(initVirtMem);
 
@@ -98,7 +101,7 @@ PowerLiveProcess::argsInit(int intSize, int pageSize)
         //XXX Figure out what these should be
         auxv.push_back(auxv_t(M5_AT_HWCAP, features));
         //The system page size
-        auxv.push_back(auxv_t(M5_AT_PAGESZ, PowerISA::VMPageSize));
+        auxv.push_back(auxv_t(M5_AT_PAGESZ, PowerISA::PageBytes));
         //Frequency at which times() increments
         auxv.push_back(auxv_t(M5_AT_CLKTCK, 0x64));
         // For statically linked executables, this is the virtual address of the
@@ -108,11 +111,10 @@ PowerLiveProcess::argsInit(int intSize, int pageSize)
         auxv.push_back(auxv_t(M5_AT_PHENT, elfObject->programHeaderSize()));
         // This is the number of program headers from the original elf file.
         auxv.push_back(auxv_t(M5_AT_PHNUM, elfObject->programHeaderCount()));
-        //This is the address of the elf "interpreter", It should be set
-        //to 0 for regular executables. It should be something else
-        //(not sure what) for dynamic libraries.
-        auxv.push_back(auxv_t(M5_AT_BASE, 0));
-
+        // This is the base address of the ELF interpreter; it should be
+        // zero for static executables or contain the base address for
+        // dynamic executables.
+        auxv.push_back(auxv_t(M5_AT_BASE, getBias()));
         //XXX Figure out what this should be.
         auxv.push_back(auxv_t(M5_AT_FLAGS, 0));
         //The entry point to the program
@@ -255,7 +257,7 @@ PowerLiveProcess::argsInit(int intSize, int pageSize)
     //Set the stack pointer register
     tc->setIntReg(StackPointerReg, stack_min);
 
-    tc->pcState(objFile->entryPoint());
+    tc->pcState(getStartPC());
 
     //Align the "stack_min" to a page boundary.
     stack_min = roundDown(stack_min, pageSize);
@@ -277,15 +279,14 @@ PowerLiveProcess::setSyscallArg(ThreadContext *tc,
 }
 
 void
-PowerLiveProcess::setSyscallReturn(ThreadContext *tc,
-        SyscallReturn return_value)
+PowerLiveProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
 {
     Cr cr = tc->readIntReg(INTREG_CR);
-    if (return_value.successful()) {
+    if (sysret.successful()) {
         cr.cr0.so = 0;
     } else {
         cr.cr0.so = 1;
     }
     tc->setIntReg(INTREG_CR, cr);
-    tc->setIntReg(ReturnValueReg, return_value.value());
+    tc->setIntReg(ReturnValueReg, sysret.encodedValue());
 }

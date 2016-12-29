@@ -29,8 +29,6 @@
  *          Steve Reinhardt
  */
 
-#include <Python.h>
-
 #include <string>
 #include <vector>
 
@@ -40,6 +38,8 @@
 #include "sim/global_event.hh"
 #include "sim/sim_events.hh"
 #include "sim/sim_exit.hh"
+#include "cpu/pc_event.hh"
+#include "sim/system.hh"
 
 using namespace std;
 
@@ -89,6 +89,20 @@ schedBreak(Tick when)
     warn("need to stop all queues");
 }
 
+void
+schedRelBreak(Tick delta)
+{
+    schedBreak(curTick() + delta);
+}
+
+void
+breakAtKernelFunction(const char* funcName)
+{
+    System* curSystem = System::systemList[0];
+    curSystem->addKernelFuncEvent<BreakPCEvent>(funcName,
+                                                "GDB scheduled break", true);
+}
+
 ///
 /// Function to cause the simulator to take a checkpoint from the debugger
 ///
@@ -106,22 +120,6 @@ eventqDump()
     for (uint32_t i = 0; i < numMainEventQueues; ++i) {
         mainEventQueue[i]->dump();
     }
-}
-
-void
-py_interact()
-{
-    PyObject *globals;
-    PyObject *locals;
-
-    globals = PyEval_GetGlobals();
-    Py_INCREF(globals);
-    locals = PyDict_New();
-    PyRun_String("import code", Py_file_input, globals, locals);
-    PyRun_String("code.interact(local=globals())", Py_file_input,
-                 globals, locals);
-    Py_DECREF(globals);
-    Py_DECREF(locals);
 }
 
 int remote_gdb_base_port = 7000;

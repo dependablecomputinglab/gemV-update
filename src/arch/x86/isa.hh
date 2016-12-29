@@ -63,20 +63,20 @@ namespace X86ISA
         ISA(Params *p);
         const Params *params() const;
 
-        MiscReg readMiscRegNoEffect(int miscReg);
+        MiscReg readMiscRegNoEffect(int miscReg) const;
         MiscReg readMiscReg(int miscReg, ThreadContext *tc);
 
         void setMiscRegNoEffect(int miscReg, MiscReg val);
         void setMiscReg(int miscReg, MiscReg val, ThreadContext *tc);
 
         int
-        flattenIntIndex(int reg)
+        flattenIntIndex(int reg) const
         {
             return reg & ~IntFoldBit;
         }
 
         int
-        flattenFloatIndex(int reg)
+        flattenFloatIndex(int reg) const
         {
             if (reg >= NUM_FLOATREGS) {
                 reg = FLOATREG_STACK(reg - NUM_FLOATREGS,
@@ -86,13 +86,20 @@ namespace X86ISA
         }
 
         int
-        flattenCCIndex(int reg)
+        flattenCCIndex(int reg) const
         {
             return reg;
         }
 
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
+        int
+        flattenMiscIndex(int reg) const
+        {
+            return reg;
+        }
+
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
+
         void startup(ThreadContext *tc);
 
         /// Explicitly import the otherwise hidden startup

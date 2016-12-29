@@ -167,9 +167,8 @@ class ISA : public SimObject
 
     void clear();
 
-    void serialize(std::ostream & os);
-
-    void unserialize(Checkpoint *cp, const std::string & section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     void startup(ThreadContext *tc) {}
 
@@ -177,14 +176,13 @@ class ISA : public SimObject
     using SimObject::startup;
 
   protected:
-
     bool isHyperPriv() { return hpstate.hpriv; }
     bool isPriv() { return hpstate.hpriv || pstate.priv; }
     bool isNonPriv() { return !isPriv(); }
 
   public:
 
-    MiscReg readMiscRegNoEffect(int miscReg);
+    MiscReg readMiscRegNoEffect(int miscReg) const;
     MiscReg readMiscReg(int miscReg, ThreadContext *tc);
 
     void setMiscRegNoEffect(int miscReg, const MiscReg val);
@@ -192,7 +190,7 @@ class ISA : public SimObject
             ThreadContext *tc);
 
     int
-    flattenIntIndex(int reg)
+    flattenIntIndex(int reg) const
     {
         assert(reg < TotalInstIntRegs);
         RegIndex flatIndex = intRegMap[reg];
@@ -201,17 +199,24 @@ class ISA : public SimObject
     }
 
     int
-    flattenFloatIndex(int reg)
+    flattenFloatIndex(int reg) const
     {
         return reg;
     }
 
     // dummy
     int
-    flattenCCIndex(int reg)
+    flattenCCIndex(int reg) const
     {
         return reg;
     }
+
+    int
+    flattenMiscIndex(int reg) const
+    {
+        return reg;
+    }
+
 
     typedef SparcISAParams Params;
     const Params *params() const;

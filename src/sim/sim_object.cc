@@ -39,6 +39,7 @@
 #include "base/trace.hh"
 #include "base/types.hh"
 #include "debug/Checkpoint.hh"
+#include "sim/probe/probe.hh"
 #include "sim/sim_object.hh"
 #include "sim/stats.hh"
 
@@ -65,8 +66,13 @@ SimObject::SimObject(const Params *p)
 #ifdef DEBUG
     doDebugBreak = false;
 #endif
-
     simObjectList.push_back(this);
+    probeManager = new ProbeManager(this);
+}
+
+SimObject::~SimObject()
+{
+    delete probeManager;
 }
 
 void
@@ -75,11 +81,13 @@ SimObject::init()
 }
 
 void
-SimObject::loadState(Checkpoint *cp)
+SimObject::loadState(CheckpointIn &cp)
 {
-    if (cp->sectionExists(name())) {
+    if (cp.sectionExists(name())) {
         DPRINTF(Checkpoint, "unserializing\n");
-        unserialize(cp, name());
+        // This works despite name() returning a fully qualified name
+        // since we are at the top level.
+        unserializeSection(cp, name());
     } else {
         DPRINTF(Checkpoint, "no checkpoint section found\n");
     }
@@ -108,19 +116,42 @@ SimObject::resetStats()
 {
 }
 
+/**
+ * No probe points by default, so do nothing in base.
+ */
+void
+SimObject::regProbePoints()
+{
+}
+
+/**
+ * No probe listeners by default, so do nothing in base.
+ */
+void
+SimObject::regProbeListeners()
+{
+}
+
+ProbeManager *
+SimObject::getProbeManager()
+{
+    return probeManager;
+}
+
 //
 // static function: serialize all SimObjects.
 //
 void
-SimObject::serializeAll(std::ostream &os)
+SimObject::serializeAll(CheckpointOut &cp)
 {
     SimObjectList::reverse_iterator ri = simObjectList.rbegin();
     SimObjectList::reverse_iterator rend = simObjectList.rend();
 
     for (; ri != rend; ++ri) {
         SimObject *obj = *ri;
-        obj->nameOut(os);
-        obj->serialize(os);
+        // This works despite name() returning a fully qualified name
+        // since we are at the top level.
+        obj->serializeSection(cp, obj->name());
    }
 }
 
@@ -148,14 +179,6 @@ debugObjectBreak(const char *objs)
     SimObject::debugObjectBreak(string(objs));
 }
 #endif
-
-unsigned int
-SimObject::drain(DrainManager *drain_manager)
-{
-    setDrainState(Drained);
-    return 0;
-}
-
 
 SimObject *
 SimObject::find(const char *name)

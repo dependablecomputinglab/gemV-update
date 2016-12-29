@@ -74,10 +74,10 @@ class SimpleDisk;
 class AlphaBackdoor : public BasicPioDevice
 {
   protected:
-    struct Access : public AlphaAccess
+    struct Access : public AlphaAccess, public Serializable
     {
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
     };
 
     union {
@@ -107,19 +107,19 @@ class AlphaBackdoor : public BasicPioDevice
         return dynamic_cast<const Params *>(_params);
     }
 
-    virtual void startup();
+    void startup() override;
 
     /**
      * memory mapped reads and writes
      */
-    virtual Tick read(PacketPtr pkt);
-    virtual Tick write(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
+    Tick write(PacketPtr pkt) override;
 
     /**
      * standard serialization routines for checkpointing
      */
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 #endif // __DEV_ALPHA_BACKDOOR_HH__

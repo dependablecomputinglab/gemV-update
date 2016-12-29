@@ -55,12 +55,12 @@ class I8237 : public BasicPioDevice
     I8237(Params *p) : BasicPioDevice(p, 16), latency(p->pio_latency), maskReg(0)
     {
     }
-    Tick read(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
 
-    Tick write(PacketPtr pkt);
+    Tick write(PacketPtr pkt) override;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 } // namespace X86ISA

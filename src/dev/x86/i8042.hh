@@ -31,7 +31,7 @@
 #ifndef __DEV_X86_I8042_HH__
 #define __DEV_X86_I8042_HH__
 
-#include <queue>
+#include <deque>
 
 #include "dev/x86/intdev.hh"
 #include "dev/io_device.hh"
@@ -45,7 +45,7 @@ class IntPin;
 class PS2Device
 {
   protected:
-    std::queue<uint8_t> outBuffer;
+    std::deque<uint8_t> outBuffer;
 
     static const uint16_t NoCommand = (uint16_t)(-1);
 
@@ -61,6 +61,9 @@ class PS2Device
     PS2Device() : lastCommand(NoCommand)
     {}
 
+    virtual void serialize(const std::string &base, CheckpointOut &cp) const;
+    virtual void unserialize(const std::string &base, CheckpointIn &cp);
+
     bool hasData()
     {
         return !outBuffer.empty();
@@ -69,7 +72,7 @@ class PS2Device
     uint8_t getData()
     {
         uint8_t data = outBuffer.front();
-        outBuffer.pop();
+        outBuffer.pop_front();
         return data;
     }
 
@@ -115,11 +118,10 @@ class PS2Mouse : public PS2Device
     PS2Mouse() : PS2Device(), status(0), resolution(4), sampleRate(100)
     {}
 
-    bool processData(uint8_t data);
+    bool processData(uint8_t data) override;
 
-    void serialize(const std::string &base, std::ostream &os);
-    void unserialize(const std::string &base, Checkpoint *cp,
-            const std::string &section);
+    void serialize(const std::string &base, CheckpointOut &cp) const override;
+    void unserialize(const std::string &base, CheckpointIn &cp) override;
 };
 
 class PS2Keyboard : public PS2Device
@@ -149,11 +151,7 @@ class PS2Keyboard : public PS2Device
     };
 
   public:
-    bool processData(uint8_t data);
-
-    void serialize(const std::string &base, std::ostream &os);
-    void unserialize(const std::string &base, Checkpoint *cp,
-            const std::string &section);
+    bool processData(uint8_t data) override;
 };
 
 class I8042 : public BasicPioDevice
@@ -243,14 +241,14 @@ class I8042 : public BasicPioDevice
 
     I8042(Params *p);
 
-    AddrRangeList getAddrRanges() const;
+    AddrRangeList getAddrRanges() const override;
 
-    Tick read(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
 
-    Tick write(PacketPtr pkt);
+    Tick write(PacketPtr pkt) override;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 } // namespace X86ISA

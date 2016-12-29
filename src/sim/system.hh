@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -51,17 +51,25 @@
 #include <utility>
 #include <vector>
 
+#include "arch/isa_traits.hh"
 #include "base/loader/symtab.hh"
 #include "base/misc.hh"
 #include "base/statistics.hh"
-#include "cpu/pc_event.hh"
+#include "config/the_isa.hh"
 #include "enums/MemoryMode.hh"
-#include "kern/system_events.hh"
 #include "mem/mem_object.hh"
 #include "mem/port.hh"
 #include "mem/port_proxy.hh"
 #include "mem/physical.hh"
 #include "params/System.hh"
+
+/**
+ * To avoid linking errors with LTO, only include the header if we
+ * actually have the definition.
+ */
+#if THE_ISA != NULL_ISA
+#include "cpu/pc_event.hh"
+#endif
 
 class BaseCPU;
 class BaseRemoteGDB;
@@ -89,9 +97,9 @@ class System : public MemObject
         SystemPort(const std::string &_name, MemObject *_owner)
             : MasterPort(_name, _owner)
         { }
-        bool recvTimingResp(PacketPtr pkt)
+        bool recvTimingResp(PacketPtr pkt) override
         { panic("SystemPort does not receive timing!\n"); return false; }
-        void recvRetry()
+        void recvReqRetry() override
         { panic("SystemPort does not expect retry!\n"); }
     };
 
@@ -103,7 +111,7 @@ class System : public MemObject
      * After all objects have been created and all ports are
      * connected, check that the system port is connected.
      */
-    virtual void init();
+    void init() override;
 
     /**
      * Get a reference to the system port that can be used by
@@ -119,9 +127,7 @@ class System : public MemObject
      * Additional function to return the Port of a memory object.
      */
     BaseMasterPort& getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID);
-
-    static const char *MemoryModeStrings[4];
+                                  PortID idx = InvalidPortID) override;
 
     /** @{ */
     /**
@@ -190,8 +196,9 @@ class System : public MemObject
 
     std::vector<ThreadContext *> threadContexts;
     int _numContexts;
+    const bool multiThread;
 
-    ThreadContext *getThreadContext(ThreadID tid)
+    ThreadContext *getThreadContext(ContextID tid)
     {
         return threadContexts[tid];
     }
@@ -237,6 +244,13 @@ class System : public MemObject
      */
     Addr loadAddrMask;
 
+    /** Offset that should be used for binary/symbol loading.
+     * This further allows more flexibily than the loadAddrMask allows alone in
+     * loading kernels and similar. The loadAddrOffset is applied after the
+     * loadAddrMask.
+     */
+    Addr loadAddrOffset;
+
   protected:
     uint64_t nextPID;
 
@@ -264,6 +278,26 @@ class System : public MemObject
      */
     bool isMemAddr(Addr addr) const;
 
+    /**
+     * Get the architecture.
+     */
+    Arch getArch() const { return Arch::TheISA; }
+
+     /**
+     * Get the page bytes for the ISA.
+     */
+    Addr getPageBytes() const { return TheISA::PageBytes; }
+
+    /**
+     * Get the number of bits worth of in-page adress for the ISA.
+     */
+    Addr getPageShift() const { return TheISA::PageShift; }
+
+    /**
+     * The thermal model used for this system (if any).
+     */
+    ThermalModel * getThermalModel() const { return thermalModel; }
+
   protected:
 
     PhysicalMemory physmem;
@@ -283,6 +317,8 @@ class System : public MemObject
      * like cache statistics.
      */
     std::vector<std::string> masterIds;
+
+    ThermalModel * thermalModel;
 
   public:
 
@@ -306,7 +342,7 @@ class System : public MemObject
         return masterIds.size();
     }
 
-    virtual void regStats();
+    void regStats() override;
     /**
      * Called by pseudo_inst to track the number of work items started by this
      * system.
@@ -321,7 +357,7 @@ class System : public MemObject
      * Called by pseudo_inst to track the number of work items completed by
      * this system.
      */
-    uint64_t 
+    uint64_t
     incWorkItemsEnd()
     {
         return ++workItemsEnd;
@@ -332,13 +368,13 @@ class System : public MemObject
      * Returns the total number of cpus that have executed work item begin or
      * ends.
      */
-    int 
+    int
     markWorkItem(int index)
     {
         int count = 0;
         assert(index < activeCpus.size());
         activeCpus[index] = true;
-        for (std::vector<bool>::iterator i = activeCpus.begin(); 
+        for (std::vector<bool>::iterator i = activeCpus.begin();
              i < activeCpus.end(); i++) {
             if (*i) count++;
         }
@@ -458,7 +494,7 @@ class System : public MemObject
     System(Params *p);
     ~System();
 
-    void initState();
+    void initState() override;
 
     const Params *params() const { return (const Params *)_params; }
 
@@ -486,14 +522,14 @@ class System : public MemObject
     /// @return Starting address of first page
     Addr allocPhysPages(int npages);
 
-    int registerThreadContext(ThreadContext *tc, int assigned=-1);
-    void replaceThreadContext(ThreadContext *tc, int context_id);
+    ContextID registerThreadContext(ThreadContext *tc,
+                                    ContextID assigned = InvalidContextID);
+    void replaceThreadContext(ThreadContext *tc, ContextID context_id);
 
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    unsigned int drain(DrainManager *dm);
-    void drainResume();
+    void drainResume() override;
 
   public:
     Counter totalNumInsts;
@@ -524,7 +560,7 @@ class System : public MemObject
      *
      * @param os stream to serialize to
      */
-    virtual void serializeSymtab(std::ostream &os) {}
+    virtual void serializeSymtab(CheckpointOut &os) const {}
 
     /**
      * If needed, unserialize additional symbol table entries for a
@@ -533,8 +569,7 @@ class System : public MemObject
      * @param cp checkpoint to unserialize from
      * @param section relevant section in the checkpoint
      */
-    virtual void unserializeSymtab(Checkpoint *cp,
-                                   const std::string &section) {}
+    virtual void unserializeSymtab(CheckpointIn &cp) {}
 
 };
 

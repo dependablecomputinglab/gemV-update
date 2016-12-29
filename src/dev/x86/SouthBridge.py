@@ -84,6 +84,7 @@ class SouthBridge(SimObject):
     ide.ProgIF = 0x80
     ide.InterruptLine = 14
     ide.InterruptPin = 1
+    ide.LegacyIOBase = x86IOAddress(0)
 
     def attachIO(self, bus, dma_ports):
         # Route interupt signals
@@ -105,7 +106,6 @@ class SouthBridge(SimObject):
         self.cmos.pio = bus.master
         self.dma1.pio = bus.master
         self.ide.pio = bus.master
-        self.ide.config = bus.master
         if dma_ports.count(self.ide.dma) == 0:
                 self.ide.dma = bus.slave
         self.keyboard.pio = bus.master

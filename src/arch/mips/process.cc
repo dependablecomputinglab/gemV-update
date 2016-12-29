@@ -58,10 +58,10 @@ MipsLiveProcess::MipsLiveProcess(LiveProcessParams * params,
 
     // Set up break point (Top of Heap)
     brk_point = objFile->dataBase() + objFile->dataSize() + objFile->bssSize();
-    brk_point = roundUp(brk_point, VMPageSize);
+    brk_point = roundUp(brk_point, PageBytes);
 
     // Set up region for mmaps.  Start it 1GB above the top of the heap.
-    mmap_start = mmap_end = brk_point + 0x40000000L;
+    mmap_end = brk_point + 0x40000000L;
 }
 
 void
@@ -69,7 +69,7 @@ MipsLiveProcess::initState()
 {
     LiveProcess::initState();
 
-    argsInit<uint32_t>(VMPageSize);
+    argsInit<uint32_t>(PageBytes);
 }
 
 template<class IntType>
@@ -77,6 +77,9 @@ void
 MipsLiveProcess::argsInit(int pageSize)
 {
     int intSize = sizeof(IntType);
+
+    // Patch the ld_bias for dynamic executables.
+    updateBias();
 
     // load object file into target memory
     objFile->loadSections(initVirtMem);
@@ -88,7 +91,7 @@ MipsLiveProcess::argsInit(int pageSize)
     if (elfObject)
     {
         // Set the system page size
-        auxv.push_back(auxv_t(M5_AT_PAGESZ, MipsISA::VMPageSize));
+        auxv.push_back(auxv_t(M5_AT_PAGESZ, MipsISA::PageBytes));
         // Set the frequency at which time() increments
         auxv.push_back(auxv_t(M5_AT_CLKTCK, 100));
         // For statically linked executables, this is the virtual
@@ -100,6 +103,10 @@ MipsLiveProcess::argsInit(int pageSize)
         auxv.push_back(auxv_t(M5_AT_PHENT, elfObject->programHeaderSize()));
         // This is the number of program headers from the original elf file.
         auxv.push_back(auxv_t(M5_AT_PHNUM, elfObject->programHeaderCount()));
+        // This is the base address of the ELF interpreter; it should be
+        // zero for static executables or contain the base address for
+        // dynamic executables.
+        auxv.push_back(auxv_t(M5_AT_BASE, getBias()));
         //The entry point to the program
         auxv.push_back(auxv_t(M5_AT_ENTRY, objFile->entryPoint()));
         //Different user and group IDs
@@ -177,7 +184,7 @@ MipsLiveProcess::argsInit(int pageSize)
     setSyscallArg(tc, 1, argv_array_base);
     tc->setIntReg(StackPointerReg, stack_min);
 
-    tc->pcState(objFile->entryPoint());
+    tc->pcState(getStartPC());
 }
 
 
@@ -197,16 +204,15 @@ MipsLiveProcess::setSyscallArg(ThreadContext *tc,
 }
 
 void
-MipsLiveProcess::setSyscallReturn(ThreadContext *tc,
-        SyscallReturn return_value)
+MipsLiveProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
 {
-    if (return_value.successful()) {
+    if (sysret.successful()) {
         // no error
         tc->setIntReg(SyscallSuccessReg, 0);
-        tc->setIntReg(ReturnValueReg, return_value.value());
+        tc->setIntReg(ReturnValueReg, sysret.returnValue());
     } else {
         // got an error, return details
         tc->setIntReg(SyscallSuccessReg, (IntReg) -1);
-        tc->setIntReg(ReturnValueReg, -return_value.value());
+        tc->setIntReg(ReturnValueReg, sysret.errnoValue());
     }
 }

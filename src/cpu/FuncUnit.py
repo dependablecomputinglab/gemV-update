@@ -43,20 +43,23 @@ from m5.params import *
 
 class OpClass(Enum):
     vals = ['No_OpClass', 'IntAlu', 'IntMult', 'IntDiv', 'FloatAdd',
-            'FloatCmp', 'FloatCvt', 'FloatMult', 'FloatDiv', 'FloatSqrt',
+            'FloatCmp', 'FloatCvt', 'FloatMult', 'FloatMultAcc', 'FloatDiv',
+            'FloatMisc', 'FloatSqrt',
             'SimdAdd', 'SimdAddAcc', 'SimdAlu', 'SimdCmp', 'SimdCvt',
             'SimdMisc', 'SimdMult', 'SimdMultAcc', 'SimdShift', 'SimdShiftAcc',
             'SimdSqrt', 'SimdFloatAdd', 'SimdFloatAlu', 'SimdFloatCmp',
             'SimdFloatCvt', 'SimdFloatDiv', 'SimdFloatMisc', 'SimdFloatMult',
             'SimdFloatMultAcc', 'SimdFloatSqrt',
-            'MemRead', 'MemWrite', 'IprAccess', 'InstPrefetch']
+            'MemRead', 'MemWrite', 'FloatMemRead', 'FloatMemWrite',
+            'IprAccess', 'InstPrefetch']
 
 class OpDesc(SimObject):
     type = 'OpDesc'
     cxx_header = "cpu/func_unit.hh"
-    issueLat = Param.Cycles(1, "cycles until another can be issued")
     opClass = Param.OpClass("type of operation")
     opLat = Param.Cycles(1, "cycles until result is available")
+    pipelined = Param.Bool(True, "set to true when the functional unit for"
+        "this op is fully pipelined. False means not pipelined at all.")
 
 class FUDesc(SimObject):
     type = 'FUDesc'

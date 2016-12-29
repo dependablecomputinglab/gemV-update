@@ -33,12 +33,11 @@ from m5.objects import *
 from m5.defines import buildEnv
 from m5.util import addToPath
 import os, optparse, sys
-addToPath('../common')
-addToPath('../ruby')
-addToPath('../topologies')
 
-import Options
-import Ruby
+addToPath('../')
+
+from common import Options
+from ruby import Ruby
 
 # Get paths we might need.  It's expected this file is in m5/configs/example.
 config_path = os.path.dirname(os.path.abspath(__file__))
@@ -46,9 +45,9 @@ config_root = os.path.dirname(config_path)
 m5_root = os.path.dirname(config_root)
 
 parser = optparse.OptionParser()
-Options.addCommonOptions(parser)
+Options.addNoISAOptions(parser)
 
-parser.add_option("-l", "--requests", metavar="N", default=100,
+parser.add_option("--requests", metavar="N", default=100,
                   help="Stop after N requests")
 parser.add_option("-f", "--wakeup_freq", metavar="N", default=10,
                   help="Wakeup every N cycles")
@@ -87,13 +86,8 @@ else:
     print "Error: unknown direct test generator"
     sys.exit(1)
 
-#
-# Create the M5 system.  Note that the Memory Object isn't
-# actually used by the rubytester, but is included to support the
-# M5 memory size == Ruby memory size checks
-#
-system = System(physmem = SimpleMemory(),
-                mem_ranges = [AddrRange(options.mem_size)])
+# Create the M5 system.
+system = System(mem_ranges = [AddrRange(options.mem_size)])
 
 
 # Create a top-level voltage domain and clock domain
@@ -102,26 +96,23 @@ system.voltage_domain = VoltageDomain(voltage = options.sys_voltage)
 system.clk_domain = SrcClockDomain(clock = options.sys_clock,
                                    voltage_domain = system.voltage_domain)
 
-#
 # Create the ruby random tester
-#
-system.tester = RubyDirectedTester(requests_to_complete = \
-                                   options.requests,
-                                   generator = generator)
+system.cpu = RubyDirectedTester(requests_to_complete = options.requests,
+                                generator = generator)
 
-Ruby.create_system(options, system)
+Ruby.create_system(options, False, system)
 
 # Since Ruby runs at an independent frequency, create a seperate clock
 system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                         voltage_domain = system.voltage_domain)
 
-assert(options.num_cpus == len(system.ruby._cpu_ruby_ports))
+assert(options.num_cpus == len(system.ruby._cpu_ports))
 
-for ruby_port in system.ruby._cpu_ruby_ports:
+for ruby_port in system.ruby._cpu_ports:
     #
     # Tie the ruby tester ports to the ruby cpu ports
     #
-    system.tester.cpuPort = ruby_port.slave
+    system.cpu.cpuPort = ruby_port.slave
 
 # -----------------------
 # run simulation

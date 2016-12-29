@@ -55,6 +55,8 @@ const bool flag_TRACING_ON = TRACING_ON;
 
 inline void disableAllListeners() { ListenSocket::disableAll(); }
 
+inline bool listenersDisabled() { return ListenSocket::allDisabled(); }
+
 inline void
 seedRandom(uint64_t seed)
 {
@@ -71,6 +73,7 @@ seedRandom(uint64_t seed)
 void setOutputDir(const std::string &dir);
 void doExitCleanup();
 void disableAllListeners();
+bool listenersDisabled();
 void seedRandom(uint64_t seed);
 
 %immutable compileDate;
@@ -86,8 +89,8 @@ Tick curTick();
 class Checkpoint;
 
 void serializeAll(const std::string &cpt_dir);
-Checkpoint *getCheckpoint(const std::string &cpt_dir);
-void unserializeGlobals(Checkpoint *cp);
+CheckpointIn *getCheckpoint(const std::string &cpt_dir);
+void unserializeGlobals(CheckpointIn &cp);
 
 bool want_warn, warn_verbose;
 bool want_info, info_verbose;

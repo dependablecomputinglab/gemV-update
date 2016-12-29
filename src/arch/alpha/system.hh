@@ -55,17 +55,17 @@ class AlphaSystem : public System
     /**
      * Initialise the state of the system.
      */
-    virtual void initState();
+    void initState() override;
 
     /**
      * Serialization stuff
      */
-    virtual void serializeSymtab(std::ostream &os);
-    virtual void unserializeSymtab(Checkpoint *cp, const std::string &section);
+    void serializeSymtab(CheckpointOut &cp) const override;
+    void unserializeSymtab(CheckpointIn &cp) override;
 
     /** Override startup() to provide a path to call setupFuncEvents()
      */
-    virtual void startup();
+    void startup() override;
 
     /**
      * Set the m5AlphaAccess pointer in the console
@@ -121,7 +121,7 @@ class AlphaSystem : public System
         return addFuncEvent<T>(consoleSymtab, lbl);
     }
 
-    virtual Addr fixFuncEventAddr(Addr addr);
+    Addr fixFuncEventAddr(Addr addr) override;
 
   public:
     void setIntrFreq(Tick freq) { intrFreq = freq; }

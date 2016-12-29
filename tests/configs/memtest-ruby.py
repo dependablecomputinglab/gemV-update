@@ -33,16 +33,10 @@ from m5.defines import buildEnv
 from m5.util import addToPath
 import os, optparse, sys
 
-# Get paths we might need
-config_path = os.path.dirname(os.path.abspath(__file__))
-config_root = os.path.dirname(config_path)
-m5_root = os.path.dirname(config_root)
-addToPath(config_root+'/configs/common')
-addToPath(config_root+'/configs/ruby')
-addToPath(config_root+'/configs/topologies')
+m5.util.addToPath('../configs/')
 
-import Ruby
-import Options
+from ruby import Ruby
+from common import Options
 
 parser = optparse.OptionParser()
 Options.addCommonOptions(parser)
@@ -70,18 +64,15 @@ options.ports=32
 nb_cores = 8
 
 # ruby does not support atomic, functional, or uncacheable accesses
-cpus = [ MemTest(atomic=False, percent_functional=50,
+cpus = [ MemTest(percent_functional=50,
                  percent_uncacheable=0, suppress_func_warnings=True) \
          for i in xrange(nb_cores) ]
 
 # overwrite options.num_cpus with the nb_cores value
 options.num_cpus = nb_cores
- 
+
 # system simulated
-system = System(cpu = cpus,
-                funcmem = SimpleMemory(in_addr_map = False),
-                physmem = SimpleMemory(null = True),
-                funcbus = NoncoherentBus())
+system = System(cpu = cpus)
 # Dummy voltage domain for all our clock domains
 system.voltage_domain = VoltageDomain()
 system.clk_domain = SrcClockDomain(clock = '1GHz',
@@ -98,30 +89,26 @@ for cpu in cpus:
 
 system.mem_ranges = AddrRange('256MB')
 
-Ruby.create_system(options, system)
+Ruby.create_system(options, False, system)
 
 # Create a separate clock domain for Ruby
 system.ruby.clk_domain = SrcClockDomain(clock = options.ruby_clock,
                                         voltage_domain = system.voltage_domain)
 
-assert(len(cpus) == len(system.ruby._cpu_ruby_ports))
+assert(len(cpus) == len(system.ruby._cpu_ports))
 
-for (i, ruby_port) in enumerate(system.ruby._cpu_ruby_ports):
+for (i, ruby_port) in enumerate(system.ruby._cpu_ports):
      #
-     # Tie the cpu test and functional ports to the ruby cpu ports and
+     # Tie the cpu port to the ruby cpu ports and
      # physmem, respectively
      #
-     cpus[i].test = ruby_port.slave
-     cpus[i].functional = system.funcbus.slave
-     
+     cpus[i].port = ruby_port.slave
+
      #
      # Since the memtester is incredibly bursty, increase the deadlock
      # threshold to 1 million cycles
      #
      ruby_port.deadlock_threshold = 1000000
-
-# connect reference memory to funcbus
-system.funcmem.port = system.funcbus.master
 
 # -----------------------
 # run simulation

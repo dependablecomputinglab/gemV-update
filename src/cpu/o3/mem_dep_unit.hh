@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -44,10 +44,10 @@
 #define __CPU_O3_MEM_DEP_UNIT_HH__
 
 #include <list>
+#include <memory>
 #include <set>
+#include <unordered_map>
 
-#include "base/hashmap.hh"
-#include "base/refcnt.hh"
 #include "base/statistics.hh"
 #include "cpu/inst_seq.hh"
 #include "debug/MemDepUnit.hh"
@@ -104,6 +104,9 @@ class MemDepUnit
     /** Registers statistics. */
     void regStats();
 
+    /** Determine if we are drained. */
+    bool isDrained() const;
+
     /** Perform sanity checks after a drain. */
     void drainSanityCheck() const;
 
@@ -134,7 +137,7 @@ class MemDepUnit
     /** Replays all instructions that have been rescheduled by moving them to
      *  the ready list.
      */
-    void replay(DynInstPtr &inst);
+    void replay();
 
     /** Completes a memory instruction. */
     void completed(DynInstPtr &inst);
@@ -164,13 +167,13 @@ class MemDepUnit
 
     class MemDepEntry;
 
-    typedef RefCountingPtr<MemDepEntry> MemDepEntryPtr;
+    typedef std::shared_ptr<MemDepEntry> MemDepEntryPtr;
 
     /** Memory dependence entries that track memory operations, marking
      *  when the instruction is ready to execute and what instructions depend
      *  upon it.
      */
-    class MemDepEntry : public RefCounted {
+    class MemDepEntry {
       public:
         /** Constructs a memory dependence entry. */
         MemDepEntry(DynInstPtr &new_inst)
@@ -234,7 +237,7 @@ class MemDepUnit
     /** Moves an entry to the ready list. */
     inline void moveToReady(MemDepEntryPtr &ready_inst_entry);
 
-    typedef m5::hash_map<InstSeqNum, MemDepEntryPtr, SNHash> MemDepHash;
+    typedef std::unordered_map<InstSeqNum, MemDepEntryPtr, SNHash> MemDepHash;
 
     typedef typename MemDepHash::iterator MemDepHashIt;
 

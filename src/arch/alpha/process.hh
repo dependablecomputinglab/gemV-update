@@ -42,17 +42,25 @@ class AlphaLiveProcess : public LiveProcess
   protected:
     AlphaLiveProcess(LiveProcessParams *params, ObjectFile *objFile);
 
-    void loadState(Checkpoint *cp);
-    void initState();
+    void loadState(CheckpointIn &cp) override;
+    void initState() override;
 
     void argsInit(int intSize, int pageSize);
 
   public:
-    AlphaISA::IntReg getSyscallArg(ThreadContext *tc, int &i);
+    AlphaISA::IntReg getSyscallArg(ThreadContext *tc, int &i) override;
     /// Explicitly import the otherwise hidden getSyscallArg
     using LiveProcess::getSyscallArg;
-    void setSyscallArg(ThreadContext *tc, int i, AlphaISA::IntReg val);
-    void setSyscallReturn(ThreadContext *tc, SyscallReturn return_value);
+    void setSyscallArg(ThreadContext *tc, int i, AlphaISA::IntReg val) override;
+    void setSyscallReturn(ThreadContext *tc,
+                          SyscallReturn return_value) override;
+
+    // override default implementation in LiveProcess as the mmap
+    // region for Alpha platforms grows upward
+    virtual bool mmapGrowsDown() const override { return false; }
 };
+
+/* No architectural page table defined for this ISA */
+typedef NoArchPageTable ArchPageTable;
 
 #endif // __ARCH_ALPHA_PROCESS_HH__

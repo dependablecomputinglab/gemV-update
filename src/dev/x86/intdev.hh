@@ -82,7 +82,7 @@ class IntDevice
         Tick recvMessage(PacketPtr pkt)
         {
             // @todo someone should pay for this
-            pkt->busFirstWordDelay = pkt->busLastWordDelay = 0;
+            pkt->headerDelay = pkt->payloadDelay = 0;
             return device->recvMessage(pkt);
         }
     };
@@ -150,6 +150,7 @@ class IntDevice
     virtual Tick
     recvResponse(PacketPtr pkt)
     {
+        panic("recvResponse not implemented.\n");
         return 0;
     }
 
@@ -209,7 +210,7 @@ class IntSourcePin : public SimObject
             pin.device->raiseInterruptPin(pin.number);
         }
     }
-    
+
     void
     lower()
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2015 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -42,7 +42,7 @@
  */
 
 #include "base/trace.hh"
-#include "debug/BusAddrRanges.hh"
+#include "debug/AddrRanges.hh"
 #include "dev/io_device.hh"
 #include "sim/system.hh"
 
@@ -54,10 +54,14 @@ PioPort::PioPort(PioDevice *dev)
 Tick
 PioPort::recvAtomic(PacketPtr pkt)
 {
-    // @todo: We need to pay for this and not just zero it out
-    pkt->busFirstWordDelay = pkt->busLastWordDelay = 0;
+    // technically the packet only reaches us after the header delay,
+    // and typically we also need to deserialise any payload
+    Tick receive_delay = pkt->headerDelay + pkt->payloadDelay;
+    pkt->headerDelay = pkt->payloadDelay = 0;
 
-    return pkt->isRead() ? device->read(pkt) : device->write(pkt);
+    const Tick delay(pkt->isRead() ? device->read(pkt) : device->write(pkt));
+    assert(pkt->isResponse() || pkt->isError());
+    return delay + receive_delay;
 }
 
 AddrRangeList
@@ -91,18 +95,6 @@ PioDevice::getSlavePort(const std::string &if_name, PortID idx)
     return MemObject::getSlavePort(if_name, idx);
 }
 
-unsigned int
-PioDevice::drain(DrainManager *dm)
-{
-    unsigned int count;
-    count = pioPort.drain(dm);
-    if (count)
-        setDrainState(Drainable::Draining);
-    else
-        setDrainState(Drainable::Drained);
-    return count;
-}
-
 BasicPioDevice::BasicPioDevice(const Params *p, Addr size)
     : PioDevice(p), pioAddr(p->pio_addr), pioSize(size),
       pioDelay(p->pio_latency)
@@ -113,7 +105,7 @@ BasicPioDevice::getAddrRanges() const
 {
     assert(pioSize != 0);
     AddrRangeList ranges;
-    DPRINTF(BusAddrRanges, "registering range: %#x-%#x\n", pioAddr, pioSize);
+    DPRINTF(AddrRanges, "registering range: %#x-%#x\n", pioAddr, pioSize);
     ranges.push_back(RangeSize(pioAddr, pioSize));
     return ranges;
 }

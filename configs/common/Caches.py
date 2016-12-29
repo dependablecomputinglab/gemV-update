@@ -46,37 +46,53 @@ from m5.objects import *
 # starting point, and specific parameters can be overridden in the
 # specific instantiations.
 
-class L1Cache(BaseCache):
+class L1Cache(Cache):
     assoc = 2
-    hit_latency = 2
+    tag_latency = 2
+    data_latency = 2
     response_latency = 2
     mshrs = 4
     tgts_per_mshr = 20
-    is_top_level = True
 
-class L2Cache(BaseCache):
+class L1_ICache(L1Cache):
+    is_read_only = True
+    # Writeback clean lines as well
+    writeback_clean = True
+
+class L1_DCache(L1Cache):
+    pass
+
+class L2Cache(Cache):
     assoc = 8
-    hit_latency = 20
+    tag_latency = 20
+    data_latency = 20
     response_latency = 20
     mshrs = 20
     tgts_per_mshr = 12
     write_buffers = 8
 
-class IOCache(BaseCache):
+class IOCache(Cache):
     assoc = 8
-    hit_latency = 50
+    tag_latency = 50
+    data_latency = 50
     response_latency = 50
     mshrs = 20
     size = '1kB'
     tgts_per_mshr = 12
-    forward_snoops = False
-    is_top_level = True
 
-class PageTableWalkerCache(BaseCache):
+class PageTableWalkerCache(Cache):
     assoc = 2
-    hit_latency = 2
+    tag_latency = 2
+    data_latency = 2
     response_latency = 2
     mshrs = 10
     size = '1kB'
     tgts_per_mshr = 12
-    is_top_level = True
+
+    # the x86 table walker actually writes to the table-walker cache
+    if buildEnv['TARGET_ISA'] == 'x86':
+        is_read_only = False
+    else:
+        is_read_only = True
+        # Writeback clean lines as well
+        writeback_clean = True

@@ -39,7 +39,7 @@ using namespace std;
 /**** SimpleRenameMap methods ****/
 
 SimpleRenameMap::SimpleRenameMap()
-    : freeList(NULL)
+    : freeList(NULL), zeroReg(0)
 {
 }
 
@@ -97,11 +97,7 @@ UnifiedRenameMap::init(PhysRegFile *_regFile,
 
     floatMap.init(TheISA::NumFloatRegs, &(freeList->floatList), _floatZeroReg);
 
-    ccMap.init(TheISA::NumFloatRegs, &(freeList->ccList), (RegIndex)-1);
-
-    //renameVulCalc.init(freeList->numFreeIntRegs(), freeList->numFreeFloatRegs()
-    //                        , freeList->numFreeCCRegs());
-    //renameVulCalc.init(TheISA::NumIntRegs, TheISA::NumFloatRegs, TheISA::NumCCRegs);
+    ccMap.init(TheISA::NumCCRegs, &(freeList->ccList), (RegIndex)-1);
 }
 
 

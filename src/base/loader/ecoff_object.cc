@@ -39,7 +39,7 @@
 
 // Only alpha will be able to load ecoff files for now.
 // base/types.hh and ecoff_machdep.h must be before the other .h files
-// because they are are gathered from other code bases and require some 
+// because they are are gathered from other code bases and require some
 // typedefs from those files.
 #include "arch/alpha/ecoff_machdep.h"
 #include "base/loader/coff_sym.h"
@@ -49,11 +49,11 @@
 using namespace std;
 
 ObjectFile *
-EcoffObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
+EcoffObject::tryFile(const string &fname, size_t len, uint8_t *data)
 {
     if (((ecoff_filehdr *)data)->f_magic == ECOFF_MAGIC_ALPHA) {
         // it's Alpha ECOFF
-        return new EcoffObject(fname, fd, len, data,
+        return new EcoffObject(fname, len, data,
                                ObjectFile::Alpha, ObjectFile::Tru64);
     }
     else {
@@ -62,10 +62,9 @@ EcoffObject::tryFile(const string &fname, int fd, size_t len, uint8_t *data)
 }
 
 
-EcoffObject::EcoffObject(const string &_filename, int _fd,
-                         size_t _len, uint8_t *_data,
+EcoffObject::EcoffObject(const string &_filename, size_t _len, uint8_t *_data,
                          Arch _arch, OpSys _opSys)
-    : ObjectFile(_filename, _fd, _len, _data, _arch, _opSys)
+    : ObjectFile(_filename, _len, _data, _arch, _opSys)
 {
     execHdr = (ecoff_exechdr *)fileData;
     fileHdr = &(execHdr->f);
@@ -90,9 +89,18 @@ EcoffObject::EcoffObject(const string &_filename, int _fd,
              bss.baseAddr, bss.size);
 }
 
+bool
+EcoffObject::loadAllSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                            Addr addr_mask)
+{
+    bool retval = loadGlobalSymbols(symtab, base, offset, addr_mask);
+    retval = retval && loadLocalSymbols(symtab, base, offset, addr_mask);
+    return retval;
+}
 
 bool
-EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
+EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                               Addr addr_mask)
 {
     if (!symtab)
         return false;
@@ -121,7 +129,8 @@ EcoffObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
 }
 
 bool
-EcoffObject::loadLocalSymbols(SymbolTable *symtab, Addr addrMask)
+EcoffObject::loadLocalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                              Addr addr_mask)
 {
     if (!symtab)
         return false;

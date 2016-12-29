@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2015 ARM Limited
+ * All rights reserved
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2002-2005 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -28,6 +40,7 @@
  * Authors: Nathan Binkert
  *          Erik Hallnor
  *          Steve Reinhardt
+ *          Andreas Sandberg
  */
 
 /* @file
@@ -41,112 +54,164 @@
 #include <iostream>
 #include <list>
 #include <map>
+#include <stack>
+#include <set>
 #include <vector>
 
+#include "base/bitunion.hh"
 #include "base/types.hh"
 
 class IniFile;
 class Serializable;
-class Checkpoint;
+class CheckpointIn;
 class SimObject;
+class SimObjectResolver;
 class EventQueue;
 
-/** The current version of the checkpoint format.
- * This should be incremented by 1 and only 1 for every new version, where a new
- * version is defined as a checkpoint created before this version won't work on
- * the current version until the checkpoint format is updated. Adding a new
- * SimObject shouldn't cause the version number to increase, only changes to
- * existing objects such as serializing/unserializing more state, changing sizes
- * of serialized arrays, etc. */
-static const uint64_t gem5CheckpointVersion = 0x0000000000000008;
+typedef std::ostream CheckpointOut;
+
 
 template <class T>
-void paramOut(std::ostream &os, const std::string &name, const T &param);
+void paramOut(CheckpointOut &cp, const std::string &name, const T &param);
+
+template <typename DataType, typename BitUnion>
+void paramOut(CheckpointOut &cp, const std::string &name,
+              const BitfieldBackend::BitUnionOperators<DataType, BitUnion> &p)
+{
+    paramOut(cp, name, p.__data);
+}
 
 template <class T>
-void paramIn(Checkpoint *cp, const std::string &section,
-             const std::string &name, T &param);
+void paramIn(CheckpointIn &cp, const std::string &name, T &param);
+
+template <typename DataType, typename BitUnion>
+void paramIn(CheckpointIn &cp, const std::string &name,
+             BitfieldBackend::BitUnionOperators<DataType, BitUnion> &p)
+{
+    paramIn(cp, name, p.__data);
+}
 
 template <class T>
-bool optParamIn(Checkpoint *cp, const std::string &section,
-             const std::string &name, T &param);
+bool optParamIn(CheckpointIn &cp, const std::string &name, T &param,
+                bool warn = true);
+
+template <typename DataType, typename BitUnion>
+bool optParamIn(CheckpointIn &cp, const std::string &name,
+                BitfieldBackend::BitUnionOperators<DataType, BitUnion> &p,
+                bool warn = true)
+{
+    return optParamIn(cp, name, p.__data, warn);
+}
 
 template <class T>
-void arrayParamOut(std::ostream &os, const std::string &name,
+void arrayParamOut(CheckpointOut &cp, const std::string &name,
                    const T *param, unsigned size);
 
 template <class T>
-void arrayParamOut(std::ostream &os, const std::string &name,
+void arrayParamOut(CheckpointOut &cp, const std::string &name,
                    const std::vector<T> &param);
 
 template <class T>
-void arrayParamOut(std::ostream &os, const std::string &name,
+void arrayParamOut(CheckpointOut &cp, const std::string &name,
                    const std::list<T> &param);
 
 template <class T>
-void arrayParamIn(Checkpoint *cp, const std::string &section,
-                  const std::string &name, T *param, unsigned size);
+void arrayParamOut(CheckpointOut &cp, const std::string &name,
+                   const std::set<T> &param);
 
 template <class T>
-void arrayParamIn(Checkpoint *cp, const std::string &section,
-                  const std::string &name, std::vector<T> &param);
+void arrayParamIn(CheckpointIn &cp, const std::string &name,
+                  T *param, unsigned size);
 
 template <class T>
-void arrayParamIn(Checkpoint *cp, const std::string &section,
-                  const std::string &name, std::list<T> &param);
+void arrayParamIn(CheckpointIn &cp, const std::string &name,
+                  std::vector<T> &param);
+
+template <class T>
+void arrayParamIn(CheckpointIn &cp, const std::string &name,
+                  std::list<T> &param);
+
+template <class T>
+void arrayParamIn(CheckpointIn &cp, const std::string &name,
+                  std::set<T> &param);
 
 void
-objParamIn(Checkpoint *cp, const std::string &section,
-           const std::string &name, SimObject * &param);
-
-template <typename T>
-void fromInt(T &t, int i)
-{
-    t = (T)i;
-}
-
-template <typename T>
-void fromSimObject(T &t, SimObject *s)
-{
-    t = dynamic_cast<T>(s);
-}
+objParamIn(CheckpointIn &cp, const std::string &name, SimObject * &param);
 
 //
 // These macros are streamlined to use in serialize/unserialize
 // functions.  It's assumed that serialize() has a parameter 'os' for
 // the ostream, and unserialize() has parameters 'cp' and 'section'.
-#define SERIALIZE_SCALAR(scalar)        paramOut(os, #scalar, scalar)
+#define SERIALIZE_SCALAR(scalar)        paramOut(cp, #scalar, scalar)
 
-#define UNSERIALIZE_SCALAR(scalar)      paramIn(cp, section, #scalar, scalar)
-#define UNSERIALIZE_OPT_SCALAR(scalar)      optParamIn(cp, section, #scalar, scalar)
+#define UNSERIALIZE_SCALAR(scalar)      paramIn(cp, #scalar, scalar)
+#define UNSERIALIZE_OPT_SCALAR(scalar)      optParamIn(cp, #scalar, scalar)
 
 // ENUMs are like SCALARs, but we cast them to ints on the way out
-#define SERIALIZE_ENUM(scalar)          paramOut(os, #scalar, (int)scalar)
+#define SERIALIZE_ENUM(scalar)          paramOut(cp, #scalar, (int)scalar)
 
-#define UNSERIALIZE_ENUM(scalar)                \
- do {                                           \
-    int tmp;                                    \
-    paramIn(cp, section, #scalar, tmp);         \
-    fromInt(scalar, tmp);                    \
-  } while (0)
+#define UNSERIALIZE_ENUM(scalar)                        \
+    do {                                                \
+        int tmp;                                        \
+        paramIn(cp, #scalar, tmp);                      \
+        scalar = static_cast<decltype(scalar)>(tmp);    \
+    } while (0)
 
 #define SERIALIZE_ARRAY(member, size)           \
-        arrayParamOut(os, #member, member, size)
+        arrayParamOut(cp, #member, member, size)
 
 #define UNSERIALIZE_ARRAY(member, size)         \
-        arrayParamIn(cp, section, #member, member, size)
+        arrayParamIn(cp, #member, member, size)
 
-#define SERIALIZE_OBJPTR(objptr)        paramOut(os, #objptr, (objptr)->name())
+#define SERIALIZE_CONTAINER(member)             \
+        arrayParamOut(cp, #member, member)
+
+#define UNSERIALIZE_CONTAINER(member)           \
+        arrayParamIn(cp, #member, member)
+
+#define SERIALIZE_EVENT(event) event.serializeSection(cp, #event);
+
+#define UNSERIALIZE_EVENT(event)                        \
+    do {                                                \
+        event.unserializeSection(cp, #event);           \
+        eventQueue()->checkpointReschedule(&event);     \
+    } while (0)
+
+#define SERIALIZE_OBJ(obj) obj.serializeSection(cp, #obj)
+#define UNSERIALIZE_OBJ(obj) obj.unserializeSection(cp, #obj)
+
+#define SERIALIZE_OBJPTR(objptr)        paramOut(cp, #objptr, (objptr)->name())
 
 #define UNSERIALIZE_OBJPTR(objptr)                      \
-  do {                                                  \
-    SimObject *sptr;                                    \
-    objParamIn(cp, section, #objptr, sptr);             \
-    fromSimObject(objptr, sptr);                        \
-  } while (0)
+    do {                                                \
+        SimObject *sptr;                                \
+        objParamIn(cp, #objptr, sptr);                  \
+        objptr = dynamic_cast<decltype(objptr)>(sptr);  \
+    } while (0)
 
 /**
  * Basic support for object serialization.
+ *
+ * Objects that support serialization should derive from this
+ * class. Such objects can largely be divided into two categories: 1)
+ * True SimObjects (deriving from SimObject), and 2) child objects
+ * (non-SimObjects).
+ *
+ * SimObjects are serialized automatically into their own sections
+ * automatically by the SimObject base class (see
+ * SimObject::serializeAll().
+ *
+ * SimObjects can contain other serializable objects that are not
+ * SimObjects. Much like normal serialized members are not serialized
+ * automatically, these objects will not be serialized automatically
+ * and it is expected that the objects owning such serializable
+ * objects call the required serialization/unserialization methods on
+ * child objects. The preferred method to serialize a child object is
+ * to call serializeSection() on the child, which serializes the
+ * object into a new subsection in the current section. Another option
+ * is to call serialize() directly, which serializes the object into
+ * the current section. The latter is not recommended as it can lead
+ * to naming clashes between objects.
  *
  * @note Many objects that support serialization need to be put in a
  * consistent state when serialization takes place. We refer to the
@@ -157,113 +222,134 @@ void fromSimObject(T &t, SimObject *s)
 class Serializable
 {
   protected:
-    void nameOut(std::ostream &os);
-    void nameOut(std::ostream &os, const std::string &_name);
+    /**
+     * Scoped checkpoint section helper class
+     *
+     * This helper class creates a section within a checkpoint without
+     * the need for a separate serializeable object. It is mainly used
+     * within the Serializable class when serializing or unserializing
+     * section (see serializeSection() and unserializeSection()). It
+     * can also be used to maintain backwards compatibility in
+     * existing code that serializes structs that are not inheriting
+     * from Serializable into subsections.
+     *
+     * When the class is instantiated, it appends a name to the active
+     * path in a checkpoint. The old path is later restored when the
+     * instance is destroyed. For example, serializeSection() could be
+     * implemented by instantiating a ScopedCheckpointSection and then
+     * calling serialize() on an object.
+     */
+    class ScopedCheckpointSection {
+      public:
+        template<class CP>
+        ScopedCheckpointSection(CP &cp, const char *name) {
+            pushName(name);
+            nameOut(cp);
+        }
+
+        template<class CP>
+        ScopedCheckpointSection(CP &cp, const std::string &name) {
+            pushName(name.c_str());
+            nameOut(cp);
+        }
+
+        ~ScopedCheckpointSection();
+
+        ScopedCheckpointSection() = delete;
+        ScopedCheckpointSection(const ScopedCheckpointSection &) = delete;
+        ScopedCheckpointSection &operator=(
+            const ScopedCheckpointSection &) = delete;
+        ScopedCheckpointSection &operator=(
+            ScopedCheckpointSection &&) = delete;
+
+      private:
+        void pushName(const char *name);
+        void nameOut(CheckpointOut &cp);
+        void nameOut(CheckpointIn &cp) {};
+    };
 
   public:
     Serializable();
     virtual ~Serializable();
 
-    // manditory virtual function, so objects must provide names
-    virtual const std::string name() const = 0;
+    /**
+     * Serialize an object
+     *
+     * Output an object's state into the current checkpoint section.
+     *
+     * @param cp Checkpoint state
+     */
+    virtual void serialize(CheckpointOut &cp) const = 0;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    /**
+     * Unserialize an object
+     *
+     * Read an object's state from the current checkpoint section.
+     *
+     * @param cp Checkpoint state
+     */
+    virtual void unserialize(CheckpointIn &cp) = 0;
 
-    static Serializable *create(Checkpoint *cp, const std::string &section);
+    /**
+     * Serialize an object into a new section
+     *
+     * This method creates a new section in a checkpoint and calls
+     * serialize() to serialize the current object into that
+     * section. The name of the section is appended to the current
+     * checkpoint path.
+     *
+     * @param cp Checkpoint state
+     * @param name Name to append to the active path
+     */
+    void serializeSection(CheckpointOut &cp, const char *name) const;
+
+    void serializeSection(CheckpointOut &cp, const std::string &name) const {
+        serializeSection(cp, name.c_str());
+    }
+
+    /**
+     * Unserialize an a child object
+     *
+     * This method loads a child object from a checkpoint. The object
+     * name is appended to the active path to form a fully qualified
+     * section name and unserialize() is called.
+     *
+     * @param cp Checkpoint state
+     * @param name Name to append to the active path
+     */
+    void unserializeSection(CheckpointIn &cp, const char *name);
+
+    void unserializeSection(CheckpointIn &cp, const std::string &name) {
+        unserializeSection(cp, name.c_str());
+    }
+
+    /** Get the fully-qualified name of the active section */
+    static const std::string &currentSection();
 
     static int ckptCount;
     static int ckptMaxCount;
     static int ckptPrevCount;
     static void serializeAll(const std::string &cpt_dir);
-    static void unserializeGlobals(Checkpoint *cp);
+    static void unserializeGlobals(CheckpointIn &cp);
+
+  private:
+    static std::stack<std::string> path;
 };
 
 void debug_serialize(const std::string &cpt_dir);
 
-//
-// A SerializableBuilder serves as an evaluation context for a set of
-// parameters that describe a specific instance of a Serializable.  This
-// evaluation context corresponds to a section in the .ini file (as
-// with the base ParamContext) plus an optional node in the
-// configuration hierarchy (the configNode member) for resolving
-// Serializable references.  SerializableBuilder is an abstract superclass;
-// derived classes specialize the class for particular subclasses of
-// Serializable (e.g., BaseCache).
-//
-// For typical usage, see the definition of
-// SerializableClass::createObject().
-//
-class SerializableBuilder
-{
-  public:
 
-    SerializableBuilder() {}
-
-    virtual ~SerializableBuilder() {}
-
-    // Create the actual Serializable corresponding to the parameter
-    // values in this context.  This function is overridden in derived
-    // classes to call a specific constructor for a particular
-    // subclass of Serializable.
-    virtual Serializable *create() = 0;
-};
-
-//
-// An instance of SerializableClass corresponds to a class derived from
-// Serializable.  The SerializableClass instance serves to bind the string
-// name (found in the config file) to a function that creates an
-// instance of the appropriate derived class.
-//
-// This would be much cleaner in Smalltalk or Objective-C, where types
-// are first-class objects themselves.
-//
-class SerializableClass
-{
-  public:
-
-    // Type CreateFunc is a pointer to a function that creates a new
-    // simulation object builder based on a .ini-file parameter
-    // section (specified by the first string argument), a unique name
-    // for the object (specified by the second string argument), and
-    // an optional config hierarchy node (specified by the third
-    // argument).  A pointer to the new SerializableBuilder is returned.
-    typedef Serializable *(*CreateFunc)(Checkpoint *cp,
-                                        const std::string &section);
-
-    static std::map<std::string,CreateFunc> *classMap;
-
-    // Constructor.  For example:
-    //
-    // SerializableClass baseCacheSerializableClass("BaseCacheSerializable",
-    //                         newBaseCacheSerializableBuilder);
-    //
-    SerializableClass(const std::string &className, CreateFunc createFunc);
-
-    // create Serializable given name of class and pointer to
-    // configuration hierarchy node
-    static Serializable *createObject(Checkpoint *cp,
-                                      const std::string &section);
-};
-
-//
-// Macros to encapsulate the magic of declaring & defining
-// SerializableBuilder and SerializableClass objects
-//
-
-#define REGISTER_SERIALIZEABLE(CLASS_NAME, OBJ_CLASS)                      \
-SerializableClass the##OBJ_CLASS##Class(CLASS_NAME,                        \
-                                         OBJ_CLASS::createForUnserialize);
-
-class Checkpoint
+class CheckpointIn
 {
   private:
 
     IniFile *db;
 
+    SimObjectResolver &objNameResolver;
+
   public:
-    Checkpoint(const std::string &cpt_dir);
-    ~Checkpoint();
+    CheckpointIn(const std::string &cpt_dir, SimObjectResolver &resolver);
+    ~CheckpointIn();
 
     const std::string cptDir;
 
@@ -273,6 +359,8 @@ class Checkpoint
     bool findObj(const std::string &section, const std::string &entry,
                  SimObject *&value);
 
+
+    bool entryExists(const std::string &section, const std::string &entry);
     bool sectionExists(const std::string &section);
 
     // The following static functions have to do with checkpoint

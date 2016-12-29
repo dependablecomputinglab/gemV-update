@@ -161,8 +161,7 @@ ISA::readIpr(int idx, ThreadContext *tc)
 
       case IPR_DTB_PTE:
         {
-            TlbEntry &entry
-                = tc->getDTBPtr()->index(!tc->misspeculating());
+            TlbEntry &entry = tc->getDTBPtr()->index(1);
 
             retval |= ((uint64_t)entry.ppn & ULL(0x7ffffff)) << 32;
             retval |= ((uint64_t)entry.xre & ULL(0xf)) << 8;
@@ -202,9 +201,6 @@ int break_ipl = -1;
 void
 ISA::setIpr(int idx, uint64_t val, ThreadContext *tc)
 {
-    if (tc->misspeculating())
-        return;
-
     switch (idx) {
       case IPR_PALtemp0:
       case IPR_PALtemp1:
@@ -275,11 +271,6 @@ ISA::setIpr(int idx, uint64_t val, ThreadContext *tc)
         break;
 
       case IPR_IPLR:
-#ifdef DEBUG
-        if (break_ipl != -1 && break_ipl == (int)(val & 0x1f))
-            Debug::breakpoint();
-#endif
-
         // only write least significant five bits - interrupt level
         ipr[idx] = val & 0x1f;
         if (tc->getKernelStats())
@@ -477,17 +468,15 @@ SimpleThread::hwrei()
 {
     PCState pc = pcState();
     if (!(pc.pc() & 0x3))
-        return new UnimplementedOpcodeFault;
+        return std::make_shared<UnimplementedOpcodeFault>();
 
     pc.npc(readMiscRegNoEffect(IPR_EXC_ADDR));
     pcState(pc);
 
     CPA::cpa()->swAutoBegin(tc, pc.npc());
 
-    if (!misspeculating()) {
-        if (kernelStats)
-            kernelStats->hwrei();
-    }
+    if (kernelStats)
+        kernelStats->hwrei();
 
     // FIXME: XXX check for interrupts? XXX
     return NoFault;

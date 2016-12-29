@@ -44,15 +44,14 @@
 #include <string>
 #include <vector>
 
+#include "arch/generic/tlb.hh"
 #include "arch/x86/regs/segment.hh"
 #include "arch/x86/pagetable.hh"
 #include "base/trie.hh"
 #include "mem/mem_object.hh"
 #include "mem/request.hh"
 #include "params/X86TLB.hh"
-#include "sim/fault_fwd.hh"
 #include "sim/sim_object.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 class Packet;
@@ -75,6 +74,8 @@ namespace X86ISA
         typedef X86TLBParams Params;
         TLB(const Params *p);
 
+        void takeOverFrom(BaseTLB *otlb) override {}
+
         TlbEntry *lookup(Addr va, bool update_lru = true);
 
         void setConfigAddress(uint32_t addr);
@@ -88,16 +89,16 @@ namespace X86ISA
       public:
         Walker *getWalker();
 
-        void flushAll();
+        void flushAll() override;
 
         void flushNonGlobal();
 
-        void demapPage(Addr va, uint64_t asn);
+        void demapPage(Addr va, uint64_t asn) override;
 
       protected:
         uint32_t size;
 
-        TlbEntry * tlb;
+        std::vector<TlbEntry> tlb;
 
         EntryList freeList;
 
@@ -147,8 +148,8 @@ namespace X86ISA
         TlbEntry * insert(Addr vpn, TlbEntry &entry);
 
         // Checkpointing
-        virtual void serialize(std::ostream &os);
-        virtual void unserialize(Checkpoint *cp, const std::string &section);
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
 
         /**
          * Get the table walker master port. This is used for
@@ -160,7 +161,7 @@ namespace X86ISA
          *
          * @return A pointer to the walker master port
          */
-        virtual BaseMasterPort *getMasterPort();
+        BaseMasterPort *getMasterPort() override;
     };
 }
 

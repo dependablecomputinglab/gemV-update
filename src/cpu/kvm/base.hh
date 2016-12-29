@@ -40,8 +40,11 @@
 #ifndef __CPU_KVM_BASE_HH__
 #define __CPU_KVM_BASE_HH__
 
-#include <memory>
+#include <pthread.h>
+
 #include <csignal>
+#include <memory>
+#include <queue>
 
 #include "base/statistics.hh"
 #include "cpu/kvm/perfevent.hh"
@@ -50,11 +53,8 @@
 #include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
 
-/** Signal to use to trigger time-based exits from KVM */
-#define KVM_TIMER_SIGNAL SIGRTMIN
-
-/** Signal to use to trigger instruction-based exits from KVM */
-#define KVM_INST_SIGNAL (SIGRTMIN+1)
+/** Signal to use to trigger exits from KVM */
+#define KVM_KICK_SIGNAL SIGRTMIN
 
 // forward declarations
 class ThreadContext;
@@ -81,38 +81,52 @@ class BaseKvmCPU : public BaseCPU
     BaseKvmCPU(BaseKvmCPUParams *params);
     virtual ~BaseKvmCPU();
 
-    void init();
-    void startup();
-    void regStats();
+    void init() override;
+    void startup() override;
+    void regStats() override;
 
-    void serializeThread(std::ostream &os, ThreadID tid);
-    void unserializeThread(Checkpoint *cp, const std::string &section,
-                           ThreadID tid);
+    void serializeThread(CheckpointOut &cp, ThreadID tid) const override;
+    void unserializeThread(CheckpointIn &cp, ThreadID tid) override;
 
-    unsigned int drain(DrainManager *dm);
-    void drainResume();
+    DrainState drain() override;
+    void drainResume() override;
+    void notifyFork() override;
 
-    void switchOut();
-    void takeOverFrom(BaseCPU *cpu);
+    void switchOut() override;
+    void takeOverFrom(BaseCPU *cpu) override;
 
-    void verifyMemoryMode() const;
+    void verifyMemoryMode() const override;
 
-    MasterPort &getDataPort() { return dataPort; }
-    MasterPort &getInstPort() { return instPort; }
+    MasterPort &getDataPort() override { return dataPort; }
+    MasterPort &getInstPort() override { return instPort; }
 
-    void wakeup();
-    void activateContext(ThreadID thread_num, Cycles delay);
-    void suspendContext(ThreadID thread_num);
+    void wakeup(ThreadID tid = 0) override;
+    void activateContext(ThreadID thread_num) override;
+    void suspendContext(ThreadID thread_num) override;
     void deallocateContext(ThreadID thread_num);
-    void haltContext(ThreadID thread_num);
+    void haltContext(ThreadID thread_num) override;
 
-    ThreadContext *getContext(int tn);
+    ThreadContext *getContext(int tn) override;
 
-    Counter totalInsts() const;
-    Counter totalOps() const;
+    Counter totalInsts() const override;
+    Counter totalOps() const override;
+
+    /**
+     * Callback from KvmCPUPort to transition the CPU out of RunningMMIOPending
+     * when all timing requests have completed.
+     */
+    void finishMMIOPending();
 
     /** Dump the internal state to the terminal. */
-    virtual void dump();
+    virtual void dump() const;
+
+    /**
+     * Force an exit from KVM.
+     *
+     * Send a signal to the thread owning this vCPU to get it to exit
+     * from KVM. Ignored if the vCPU is not executing.
+     */
+    void kick() const { pthread_kill(vcpuThread, KVM_KICK_SIGNAL); }
 
     /**
      * A cached copy of a thread's state in the form of a SimpleThread
@@ -145,6 +159,7 @@ class BaseKvmCPU : public BaseCPU
      *     Running;
      *     RunningService;
      *     RunningServiceCompletion;
+     *     RunningMMIOPending;
      *
      *     Idle -> Idle;
      *     Idle -> Running [label="activateContext()", URL="\ref activateContext"];
@@ -154,6 +169,8 @@ class BaseKvmCPU : public BaseCPU
      *     Running -> Idle [label="drain()", URL="\ref drain"];
      *     Idle -> Running [label="drainResume()", URL="\ref drainResume"];
      *     RunningService -> RunningServiceCompletion [label="handleKvmExit()", URL="\ref handleKvmExit"];
+     *     RunningService -> RunningMMIOPending [label="handleKvmExit()", URL="\ref handleKvmExit"];
+     *     RunningMMIOPending -> RunningServiceCompletion [label="finishMMIOPending()", URL="\ref finishMMIOPending"];
      *     RunningServiceCompletion -> Running [label="tick()", URL="\ref tick"];
      *     RunningServiceCompletion -> RunningService [label="tick()", URL="\ref tick"];
      *   }
@@ -183,12 +200,21 @@ class BaseKvmCPU : public BaseCPU
          * after running service is determined in handleKvmExit() and
          * depends on what kind of service the guest requested:
          * <ul>
-         *   <li>IO/MMIO: RunningServiceCompletion
+         *   <li>IO/MMIO (Atomic): RunningServiceCompletion
+         *   <li>IO/MMIO (Timing): RunningMMIOPending
          *   <li>Halt: Idle
          *   <li>Others: Running
          * </ul>
          */
         RunningService,
+        /** Timing MMIO request in flight or stalled.
+         *
+         *  The VM has requested IO/MMIO and we are in timing mode.  A timing
+         *  request is either stalled (and will be retried with recvReqRetry())
+         *  or it is in flight.  After the timing request is complete, the CPU
+         *  will transition to the RunningServiceCompletion state.
+         */
+        RunningMMIOPending,
         /** Service completion in progress.
          *
          * The VM has requested service that requires KVM to be
@@ -240,6 +266,11 @@ class BaseKvmCPU : public BaseCPU
      * @note It is the response of the caller (normally tick()) to
      * make sure that the KVM state is synchronized and that the TC is
      * invalidated after entering KVM.
+     *
+     * @note This method does not normally cause any state
+     * transitions. However, if it may suspend the CPU by suspending
+     * the thread, which leads to a transition to the Idle state. In
+     * such a case, kvm <i>must not</i> be entered.
      *
      * @param ticks Number of ticks to execute, set to 0 to exit
      * immediately after finishing pending operations.
@@ -531,28 +562,39 @@ class BaseKvmCPU : public BaseCPU
 
 
     /**
-     * KVM memory port. Uses the default MasterPort behavior, but
-     * panics on timing accesses.
+     * KVM memory port.  Uses default MasterPort behavior and provides an
+     * interface for KVM to transparently submit atomic or timing requests.
      */
     class KVMCpuPort : public MasterPort
     {
 
       public:
         KVMCpuPort(const std::string &_name, BaseKvmCPU *_cpu)
-            : MasterPort(_name, _cpu)
+            : MasterPort(_name, _cpu), cpu(_cpu), activeMMIOReqs(0)
         { }
+        /**
+         * Interface to send Atomic or Timing IO request.  Assumes that the pkt
+         * and corresponding req have been dynamically allocated and deletes
+         * them both if the system is in atomic mode.
+         */
+        Tick submitIO(PacketPtr pkt);
+
+        /** Returns next valid state after one or more IO accesses */
+        Status nextIOState() const;
 
       protected:
-        bool recvTimingResp(PacketPtr pkt)
-        {
-            panic("The KVM CPU doesn't expect recvTimingResp!\n");
-            return true;
-        }
+        /** KVM cpu pointer for finishMMIOPending() callback */
+        BaseKvmCPU *cpu;
 
-        void recvRetry()
-        {
-            panic("The KVM CPU doesn't expect recvRetry!\n");
-        }
+        /** Pending MMIO packets */
+        std::queue<PacketPtr> pendingMMIOPkts;
+
+        /** Number of MMIO requests in flight */
+        unsigned int activeMMIOReqs;
+
+        bool recvTimingResp(PacketPtr pkt) override;
+
+        void recvReqRetry() override;
 
     };
 
@@ -562,8 +604,11 @@ class BaseKvmCPU : public BaseCPU
     /** Unused dummy port for the instruction interface */
     KVMCpuPort instPort;
 
-    /** Pre-allocated MMIO memory request */
-    Request mmio_req;
+    /**
+     * Be conservative and always synchronize the thread context on
+     * KVM entry/exit.
+     */
+    const bool alwaysSyncTC;
 
     /**
      * Is the gem5 context dirty? Set to true to force an update of
@@ -579,6 +624,9 @@ class BaseKvmCPU : public BaseCPU
 
     /** KVM internal ID of the vCPU */
     const long vcpuID;
+
+    /** ID of the vCPU thread */
+    pthread_t vcpuThread;
 
   private:
     struct TickEvent : public Event
@@ -617,6 +665,20 @@ class BaseKvmCPU : public BaseCPU
      * @return true if the signal was pending, false otherwise.
      */
     bool discardPendingSignal(int signum) const;
+
+    /**
+     * Thread-specific initialization.
+     *
+     * Some KVM-related initialization requires us to know the TID of
+     * the thread that is going to execute our event queue. For
+     * example, when setting up timers, we need to know the TID of the
+     * thread executing in KVM in order to deliver the timer signal to
+     * that thread. This method is called as the first event in this
+     * SimObject's event queue.
+     *
+     * @see startup
+     */
+    void startupThread();
 
     /** Try to drain the CPU if a drain is pending */
     bool tryDrain();
@@ -721,13 +783,6 @@ class BaseKvmCPU : public BaseCPU
 
     /** Host factor as specified in the configuration */
     float hostFactor;
-
-    /**
-     * Drain manager to use when signaling drain completion
-     *
-     * This pointer is non-NULL when draining and NULL otherwise.
-     */
-    DrainManager *drainManager;
 
   public:
     /* @{ */

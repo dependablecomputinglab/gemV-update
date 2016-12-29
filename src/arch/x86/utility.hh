@@ -42,7 +42,6 @@
 
 #include "arch/x86/regs/misc.hh"
 #include "arch/x86/types.hh"
-#include "base/hashmap.hh"
 #include "base/misc.hh"
 #include "base/types.hh"
 #include "cpu/static_inst.hh"
@@ -94,7 +93,7 @@ namespace X86ISA
     void skipFunction(ThreadContext *tc);
 
     inline void
-    advancePC(PCState &pc, const StaticInstPtr inst)
+    advancePC(PCState &pc, const StaticInstPtr &inst)
     {
         inst->advancePC(pc);
     }

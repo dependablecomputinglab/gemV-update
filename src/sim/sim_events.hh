@@ -63,10 +63,10 @@ class GlobalSimLoopExitEvent : public GlobalEvent
     // non-scheduling version for createForUnserialize()
     GlobalSimLoopExitEvent();
     GlobalSimLoopExitEvent(Tick when, const std::string &_cause, int c,
-                           Tick repeat = 0, bool serialize = false);
+                           Tick repeat = 0);
 
     const std::string getCause() const { return cause; }
-    const int getCode() const { return code; }
+    int getCode() const { return code; }
 
     void process();     // process event
 
@@ -83,21 +83,18 @@ class LocalSimLoopExitEvent : public Event
 
   public:
     LocalSimLoopExitEvent();
-    LocalSimLoopExitEvent(const std::string &_cause, int c, Tick repeat = 0,
-                          bool serialize = false);
+    LocalSimLoopExitEvent(const std::string &_cause, int c, Tick repeat = 0);
 
     const std::string getCause() const { return cause; }
-    const int getCode() const { return code; }
+    int getCode() const { return code; }
 
-    void process();     // process event
+    void process() override;     // process event
 
-    virtual const char *description() const;
+    const char *description() const override;
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
-    virtual void unserialize(Checkpoint *cp, const std::string &section,
-                             EventQueue *eventq);
-    static Serializable *createForUnserialize(Checkpoint *cp,
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+    static Serializable *createForUnserialize(CheckpointIn &cp,
                                               const std::string &section);
 };
 
@@ -110,11 +107,11 @@ class CountedDrainEvent : public Event
   public:
     CountedDrainEvent();
 
-    void process();
+    void process() override;
 
     void setCount(int _count) { count = _count; }
 
-    const int getCount() const { return count; }
+    int getCount() const { return count; }
 };
 
 //
@@ -131,9 +128,9 @@ class CountedExitEvent : public Event
   public:
     CountedExitEvent(const std::string &_cause, int &_downCounter);
 
-    void process();     // process event
+    void process() override;     // process event
 
-    virtual const char *description() const;
+    const char *description() const override;
 };
 
 

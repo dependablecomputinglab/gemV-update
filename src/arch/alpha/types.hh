@@ -42,13 +42,27 @@ typedef uint64_t ExtMachInst;
 
 typedef GenericISA::SimplePCState<MachInst> PCState;
 
-typedef uint64_t LargestRead;
-
 enum annotes
 {
     ANNOTE_NONE = 0,
     // An impossible number for instruction annotations
     ITOUCH_ANNOTE = 0xffffffff
+};
+
+/**
+ * Alpha-specific memory request flags
+ *
+ * These flags map to the architecture-specific lower 8 bits of the
+ * flags field in Request.
+ */
+struct AlphaRequestFlags
+{
+    typedef uint8_t ArchFlagsType;
+
+    /** The request is an ALPHA VPTE pal access (hw_ld). */
+    static const ArchFlagsType VPTE    = 0x01;
+    /** Use the alternate mode bits in ALPHA. */
+    static const ArchFlagsType ALTMODE = 0x02;
 };
 
 } // namespace AlphaISA

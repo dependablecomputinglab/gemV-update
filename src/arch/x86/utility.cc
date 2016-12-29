@@ -52,9 +52,7 @@ namespace X86ISA {
 uint64_t
 getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
 {
-    if (!FullSystem) {
-        panic("getArgument() only implemented for full system mode.\n");
-    } else if (fp) {
+    if (fp) {
         panic("getArgument(): Floating point arguments not implemented\n");
     } else if (size != 8) {
         panic("getArgument(): Can only handle 64-bit arguments.\n");
@@ -185,7 +183,7 @@ void initCPU(ThreadContext *tc, int cpuId)
     tc->setMiscReg(MISCREG_APIC_BASE, lApicBase);
 
     Interrupts * interrupts = dynamic_cast<Interrupts *>(
-            tc->getCpuPtr()->getInterruptController());
+            tc->getCpuPtr()->getInterruptController(0));
     assert(interrupts);
 
     interrupts->setRegNoEffect(APIC_ID, cpuId << 24);
@@ -203,12 +201,12 @@ void initCPU(ThreadContext *tc, int cpuId)
 void startupCPU(ThreadContext *tc, int cpuId)
 {
     if (cpuId == 0 || !FullSystem) {
-        tc->activate(Cycles(0));
+        tc->activate();
     } else {
         // This is an application processor (AP). It should be initialized to
         // look like only the BIOS POST has run on it and put then put it into
         // a halted state.
-        tc->suspend(Cycles(0));
+        tc->suspend();
     }
 }
 
@@ -219,11 +217,9 @@ copyMiscRegs(ThreadContext *src, ThreadContext *dest)
     // need to be considered while copying state. That will likely not be
     // true in the future.
     for (int i = 0; i < NUM_MISCREGS; ++i) {
-        if ( ( i != MISCREG_CR1 &&
-             !(i > MISCREG_CR4 && i < MISCREG_CR8) &&
-             !(i > MISCREG_CR8 && i <= MISCREG_CR15) ) == false) {
+        if (!isValidMiscReg(i))
              continue;
-        }
+
         dest->setMiscRegNoEffect(i, src->readMiscRegNoEffect(i));
     }
 
@@ -358,17 +354,17 @@ genX87Tags(uint16_t ftw, uint8_t top, int8_t spm)
 double
 loadFloat80(const void *_mem)
 {
-    const fp80_t *fp80((const fp80_t *)_mem);
+    fp80_t fp80;
+    memcpy(fp80.bits, _mem, 10);
 
-    return fp80_cvtd(*fp80);
+    return fp80_cvtd(fp80);
 }
 
 void
 storeFloat80(void *_mem, double value)
 {
-    fp80_t *fp80((fp80_t *)_mem);
-
-    *fp80 = fp80_cvfd(value);
+    fp80_t fp80 = fp80_cvfd(value);
+    memcpy(_mem, fp80.bits, 10);
 }
 
 } // namespace X86_ISA

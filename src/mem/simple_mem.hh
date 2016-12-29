@@ -49,7 +49,7 @@
 #ifndef __SIMPLE_MEMORY_HH__
 #define __SIMPLE_MEMORY_HH__
 
-#include <deque>
+#include <list>
 
 #include "mem/abstract_mem.hh"
 #include "mem/port.hh"
@@ -101,7 +101,7 @@ class SimpleMemory : public AbstractMemory
 
         bool recvTimingReq(PacketPtr pkt);
 
-        void recvRetry();
+        void recvRespRetry();
 
         AddrRangeList getAddrRanges() const;
 
@@ -125,7 +125,7 @@ class SimpleMemory : public AbstractMemory
      * actual memory access. Note that this is where the packet spends
      * the memory latency.
      */
-    std::deque<DeferredPacket> packetQueue;
+    std::list<DeferredPacket> packetQueue;
 
     /**
      * Bandwidth in ticks per byte. The regulation affects the
@@ -175,27 +175,21 @@ class SimpleMemory : public AbstractMemory
      */
     Tick getLatency() const;
 
-    /** @todo this is a temporary workaround until the 4-phase code is
-     * committed. upstream caches needs this packet until true is returned, so
-     * hold onto it for deletion until a subsequent call
-     */
-    std::vector<PacketPtr> pendingDelete;
-
     /**
-     * If we need to drain, keep the drain manager around until we're
-     * done here.
+     * Upstream caches need this packet until true is returned, so
+     * hold it for deletion until a subsequent call
      */
-    DrainManager *drainManager;
+    std::unique_ptr<Packet> pendingDelete;
 
   public:
 
     SimpleMemory(const SimpleMemoryParams *p);
 
-    unsigned int drain(DrainManager *dm);
+    DrainState drain() override;
 
     BaseSlavePort& getSlavePort(const std::string& if_name,
-                                PortID idx = InvalidPortID);
-    void init();
+                                PortID idx = InvalidPortID) override;
+    void init() override;
 
   protected:
 
@@ -205,7 +199,7 @@ class SimpleMemory : public AbstractMemory
 
     bool recvTimingReq(PacketPtr pkt);
 
-    void recvRetry();
+    void recvRespRetry();
 
 };
 

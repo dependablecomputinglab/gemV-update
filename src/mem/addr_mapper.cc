@@ -116,21 +116,24 @@ AddrMapper::recvTimingReq(PacketPtr pkt)
 {
     Addr orig_addr = pkt->getAddr();
     bool needsResponse = pkt->needsResponse();
-    bool memInhibitAsserted = pkt->memInhibitAsserted();
+    bool cacheResponding = pkt->cacheResponding();
 
-    if (needsResponse && !memInhibitAsserted) {
+    if (needsResponse && !cacheResponding) {
         pkt->pushSenderState(new AddrMapperSenderState(orig_addr));
     }
 
     pkt->setAddr(remapAddr(orig_addr));
 
-    // Attempt to send the packet (always succeeds for inhibited
-    // packets)
+    // Attempt to send the packet
     bool successful = masterPort.sendTimingReq(pkt);
 
-    // If not successful, restore the sender state
-    if (!successful && needsResponse) {
-        delete pkt->popSenderState();
+    // If not successful, restore the address and sender state
+    if (!successful) {
+        pkt->setAddr(orig_addr);
+
+        if (needsResponse) {
+            delete pkt->popSenderState();
+        }
     }
 
     return successful;
@@ -190,15 +193,15 @@ AddrMapper::isSnooping() const
 }
 
 void
-AddrMapper::recvRetryMaster()
+AddrMapper::recvReqRetry()
 {
-    slavePort.sendRetry();
+    slavePort.sendRetryReq();
 }
 
 void
-AddrMapper::recvRetrySlave()
+AddrMapper::recvRespRetry()
 {
-    masterPort.sendRetry();
+    masterPort.sendRetryResp();
 }
 
 void

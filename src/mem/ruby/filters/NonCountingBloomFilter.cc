@@ -29,22 +29,15 @@
 #include "base/intmath.hh"
 #include "base/str.hh"
 #include "mem/ruby/filters/NonCountingBloomFilter.hh"
-#include "mem/ruby/system/System.hh"
+#include "mem/ruby/system/RubySystem.hh"
 
 using namespace std;
 
-NonCountingBloomFilter::NonCountingBloomFilter(string str)
+NonCountingBloomFilter::NonCountingBloomFilter(int head, int tail)
 {
-    string head, tail;
-#ifndef NDEBUG
-    bool success =
-#endif
-        split_first(str, head, tail, '_');
-    assert(success);
-
     // head contains filter size, tail contains bit offset from block number
-    m_filter_size = atoi(head.c_str());
-    m_offset = atoi(tail.c_str());
+    m_filter_size = head;
+    m_offset = tail;
     m_filter_size_bits = floorLog2(m_filter_size);
 
     m_filter.resize(m_filter_size);
@@ -64,13 +57,13 @@ NonCountingBloomFilter::clear()
 }
 
 void
-NonCountingBloomFilter::increment(const Address& addr)
+NonCountingBloomFilter::increment(Addr addr)
 {
     // Not used
 }
 
 void
-NonCountingBloomFilter::decrement(const Address& addr)
+NonCountingBloomFilter::decrement(Addr addr)
 {
     // Not used
 }
@@ -80,27 +73,27 @@ NonCountingBloomFilter::merge(AbstractBloomFilter *other_filter)
 {
     // assumes both filters are the same size!
     NonCountingBloomFilter * temp = (NonCountingBloomFilter*) other_filter;
-    for(int i = 0; i < m_filter_size; ++i){
+    for (int i = 0; i < m_filter_size; ++i){
         m_filter[i] |= (*temp)[i];
     }
 }
 
 void
-NonCountingBloomFilter::set(const Address& addr)
+NonCountingBloomFilter::set(Addr addr)
 {
     int i = get_index(addr);
     m_filter[i] = 1;
 }
 
 void
-NonCountingBloomFilter::unset(const Address& addr)
+NonCountingBloomFilter::unset(Addr addr)
 {
     int i = get_index(addr);
     m_filter[i] = 0;
 }
 
 bool
-NonCountingBloomFilter::isSet(const Address& addr)
+NonCountingBloomFilter::isSet(Addr addr)
 {
     int i = get_index(addr);
     return (m_filter[i]);
@@ -108,7 +101,7 @@ NonCountingBloomFilter::isSet(const Address& addr)
 
 
 int
-NonCountingBloomFilter::getCount(const Address& addr)
+NonCountingBloomFilter::getCount(Addr addr)
 {
     return m_filter[get_index(addr)];
 }
@@ -130,7 +123,7 @@ NonCountingBloomFilter::print(ostream& out) const
 }
 
 int
-NonCountingBloomFilter::getIndex(const Address& addr)
+NonCountingBloomFilter::getIndex(Addr addr)
 {
     return get_index(addr);
 }
@@ -148,11 +141,11 @@ NonCountingBloomFilter::writeBit(const int index, const int value)
 }
 
 int
-NonCountingBloomFilter::get_index(const Address& addr)
+NonCountingBloomFilter::get_index(Addr addr)
 {
-    return addr.bitSelect(RubySystem::getBlockSizeBits() + m_offset,
-                          RubySystem::getBlockSizeBits() + m_offset +
-                          m_filter_size_bits - 1);
+    return bitSelect(addr, RubySystem::getBlockSizeBits() + m_offset,
+                     RubySystem::getBlockSizeBits() + m_offset +
+                     m_filter_size_bits - 1);
 }
 
 

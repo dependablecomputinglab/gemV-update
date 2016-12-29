@@ -57,11 +57,11 @@
             pyevent->incref();
         $self->schedule(event, when);
     }
-    
+
     void
     deschedule(Event *event)
     {
-        $self->deschedule(event); 
+        $self->deschedule(event);
 
         // Now that we're removing the python object from the event
         // queue, we need to decrement its reference count.
@@ -69,6 +69,10 @@
         if (pyevent)
             pyevent->decref();
     }
+}
+
+%typemap(out) PythonEvent* {
+   result->object = $result = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_PythonEvent, SWIG_POINTER_NEW);
 }
 
 %ignore EventQueue::schedule;

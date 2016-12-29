@@ -41,19 +41,22 @@ class AoutObject : public ObjectFile
   protected:
     aout_exechdr *execHdr;
 
-    AoutObject(const std::string &_filename, int _fd,
+    AoutObject(const std::string &_filename,
                size_t _len, uint8_t *_data,
                Arch _arch, OpSys _opSys);
 
   public:
     virtual ~AoutObject() {}
 
-    virtual bool loadGlobalSymbols(SymbolTable *symtab, Addr addrMask =
-            std::numeric_limits<Addr>::max());
-    virtual bool loadLocalSymbols(SymbolTable *symtab, Addr addrMask =
-            std::numeric_limits<Addr>::max());
+    virtual bool loadAllSymbols(SymbolTable *symtab, Addr base = 0,
+                                Addr offset = 0, Addr addr_mask = maxAddr);
+    virtual bool loadGlobalSymbols(SymbolTable *symtab, Addr base = 0,
+                                   Addr offset = 0,
+                                   Addr addr_mask = maxAddr);
+    virtual bool loadLocalSymbols(SymbolTable *symtab, Addr base = 0,
+                                  Addr offset = 0, Addr addr_mask = maxAddr);
 
-    static ObjectFile *tryFile(const std::string &fname, int fd,
+    static ObjectFile *tryFile(const std::string &fname,
                                size_t len, uint8_t *data);
 };
 

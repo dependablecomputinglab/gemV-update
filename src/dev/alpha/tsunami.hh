@@ -80,62 +80,21 @@ class Tsunami : public Platform
     int intr_sum_type[Tsunami::Max_CPUs];
     int ipi_pending[Tsunami::Max_CPUs];
 
-    void init();
+    void init() override;
 
   public:
     typedef TsunamiParams Params;
     Tsunami(const Params *p);
 
-    /**
-     * Cause the cpu to post a serial interrupt to the CPU.
-     */
-    virtual void postConsoleInt();
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    /**
-     * Clear a posted CPU interrupt (id=55)
-     */
-    virtual void clearConsoleInt();
+  public: // Public Platform interfaces
+    void postConsoleInt() override;
+    void clearConsoleInt() override;
 
-    /**
-     * Cause the chipset to post a cpi interrupt to the CPU.
-     */
-    virtual void postPciInt(int line);
-
-    /**
-     * Clear a posted PCI->CPU interrupt
-     */
-    virtual void clearPciInt(int line);
-
-
-    virtual Addr pciToDma(Addr pciAddr) const;
-
-    /**
-     * Calculate the configuration address given a bus/dev/func.
-     */
-    virtual Addr calcPciConfigAddr(int bus, int dev, int func);
-
-    /**
-     * Calculate the address for an IO location on the PCI bus.
-     */
-    virtual Addr calcPciIOAddr(Addr addr);
-
-    /**
-     * Calculate the address for a memory location on the PCI bus.
-     */
-    virtual Addr calcPciMemAddr(Addr addr);
-
-    /**
-     * Serialize this object to the given output stream.
-     * @param os The stream to serialize to.
-     */
-    virtual void serialize(std::ostream &os);
-
-    /**
-     * Reconstruct the state of this object from a checkpoint.
-     * @param cp The checkpoint use.
-     * @param section The section name of this object
-     */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void postPciInt(int line) override;
+    void clearPciInt(int line) override;
 };
 
 #endif // __DEV_TSUNAMI_HH__

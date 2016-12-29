@@ -27,14 +27,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-machine(DMA, "DMA Controller") 
-: DMASequencer * dma_sequencer,
-  Cycles request_latency = 6
+machine(MachineType:DMA, "DMA Controller") 
+    : DMASequencer * dma_sequencer;
+      Cycles request_latency := 6;
+
+      MessageBuffer * responseFromDir, network="From", virtual_network="1",
+            vnet_type="response";
+      MessageBuffer * requestToDir, network="To", virtual_network="0",
+            vnet_type="request";
+      MessageBuffer * mandatoryQueue;
 {
-
-  MessageBuffer responseFromDir, network="From", virtual_network="1", ordered="true", vnet_type="response", no_vector="true";
-  MessageBuffer reqToDirectory, network="To", virtual_network="0", ordered="false", vnet_type="request", no_vector="true";
-
   state_declaration(State, desc="DMA states", default="DMA_State_READY") {
     READY, AccessPermission:Invalid, desc="Ready to accept a new request";
     BUSY_RD, AccessPermission:Busy, desc="Busy: currently processing a request";
@@ -48,36 +50,64 @@ machine(DMA, "DMA Controller")
     Ack,          desc="DMA write to memory completed";
   }
 
-  MessageBuffer mandatoryQueue, ordered="false", no_vector="true";
-  State cur_state, no_vector="true";
-
-  State getState(Address addr) {
-    return cur_state;
-  }
-  void setState(Address addr, State state) {
-  cur_state := state;
+  structure(TBE, desc="...") {
+    State TBEState,    desc="Transient state";
+    DataBlock DataBlk, desc="Data";
   }
 
-  AccessPermission getAccessPermission(Address addr) {
+  structure(TBETable, external = "yes") {
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+
+  void set_tbe(TBE b);
+  void unset_tbe();
+  void wakeUpAllBuffers();
+
+  TBETable TBEs, template="<DMA_TBE>", constructor="m_number_of_TBEs";
+
+  Tick clockEdge();
+
+  State getState(TBE tbe, Addr addr) {
+    if (is_valid(tbe)) {
+        return tbe.TBEState;
+    } else {
+        return State:READY;
+    }
+  }
+
+  void setState(TBE tbe, Addr addr, State state) {
+    if (is_valid(tbe)) {
+        tbe.TBEState := state;
+    }
+  }
+
+  AccessPermission getAccessPermission(Addr addr) {
     return AccessPermission:NotPresent;
   }
 
-  void setAccessPermission(Address addr, State state) {
+  void setAccessPermission(Addr addr, State state) {
   }
 
-  DataBlock getDataBlock(Address addr), return_by_ref="yes" {
-    error("DMA Controller does not support getDataBlock function.\n");
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("DMA does not support functional read.");
   }
 
-  out_port(reqToDirectory_out, DMARequestMsg, reqToDirectory, desc="...");
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("DMA does not support functional write.");
+  }
+
+  out_port(requestToDir_out, DMARequestMsg, requestToDir, desc="...");
 
   in_port(dmaRequestQueue_in, SequencerMsg, mandatoryQueue, desc="...") {
-    if (dmaRequestQueue_in.isReady()) {
+    if (dmaRequestQueue_in.isReady(clockEdge())) {
       peek(dmaRequestQueue_in, SequencerMsg) {
         if (in_msg.Type == SequencerRequestType:LD ) {
-          trigger(Event:ReadRequest, in_msg.LineAddress);
+          trigger(Event:ReadRequest, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
         } else if (in_msg.Type == SequencerRequestType:ST) {
-          trigger(Event:WriteRequest, in_msg.LineAddress);
+          trigger(Event:WriteRequest, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
         } else {
           error("Invalid request type");
         }
@@ -86,12 +116,12 @@ machine(DMA, "DMA Controller")
   }
 
   in_port(dmaResponseQueue_in, DMAResponseMsg, responseFromDir, desc="...") {
-    if (dmaResponseQueue_in.isReady()) {
+    if (dmaResponseQueue_in.isReady(clockEdge())) {
       peek( dmaResponseQueue_in, DMAResponseMsg) {
         if (in_msg.Type == DMAResponseType:ACK) {
-          trigger(Event:Ack, in_msg.LineAddress);
+          trigger(Event:Ack, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
         } else if (in_msg.Type == DMAResponseType:DATA) {
-          trigger(Event:Data, in_msg.LineAddress);
+          trigger(Event:Data, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
         } else {
           error("Invalid response type");
         }
@@ -101,7 +131,7 @@ machine(DMA, "DMA Controller")
 
   action(s_sendReadRequest, "s", desc="Send a DMA read request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, DMARequestMsg, latency=request_latency) {
+      enqueue(requestToDir_out, DMARequestMsg, request_latency) {
         out_msg.PhysicalAddress := in_msg.PhysicalAddress;
         out_msg.LineAddress := in_msg.LineAddress; 
         out_msg.Type := DMARequestType:READ;
@@ -116,7 +146,7 @@ machine(DMA, "DMA Controller")
 
   action(s_sendWriteRequest, "\s", desc="Send a DMA write request to memory") {
     peek(dmaRequestQueue_in, SequencerMsg) {
-      enqueue(reqToDirectory_out, DMARequestMsg, latency=request_latency) {
+      enqueue(requestToDir_out, DMARequestMsg, request_latency) {
           out_msg.PhysicalAddress := in_msg.PhysicalAddress;
           out_msg.LineAddress := in_msg.LineAddress; 
           out_msg.Type := DMARequestType:WRITE;
@@ -130,42 +160,75 @@ machine(DMA, "DMA Controller")
   }
 
   action(a_ackCallback, "a", desc="Notify dma controller that write request completed") {
-    peek (dmaResponseQueue_in, DMAResponseMsg) {
-      dma_sequencer.ackCallback();
-    }
+    dma_sequencer.ackCallback(address);
   }
 
   action(d_dataCallback, "d", desc="Write data to dma sequencer") {
-    peek (dmaResponseQueue_in, DMAResponseMsg) {
-      dma_sequencer.dataCallback(in_msg.DataBlk);
+    dma_sequencer.dataCallback(tbe.DataBlk, address);
+  }
+
+  action(t_updateTBEData, "t", desc="Update TBE Data") {
+    assert(is_valid(tbe));
+    peek( dmaResponseQueue_in, DMAResponseMsg) {
+        tbe.DataBlk := in_msg.DataBlk;
     }
   }
 
+  action(v_allocateTBE, "v", desc="Allocate TBE entry") {
+    TBEs.allocate(address);
+    set_tbe(TBEs[address]);
+  }
+
+  action(w_deallocateTBE, "w", desc="Deallocate TBE entry") {
+    TBEs.deallocate(address);
+    unset_tbe();
+  }
+
   action(p_popRequestQueue, "p", desc="Pop request queue") {
-    dmaRequestQueue_in.dequeue();
+    dmaRequestQueue_in.dequeue(clockEdge());
   }
 
   action(p_popResponseQueue, "\p", desc="Pop request queue") {
-    dmaResponseQueue_in.dequeue();
+    dmaResponseQueue_in.dequeue(clockEdge());
+  }
+
+  action(zz_stallAndWaitRequestQueue, "zz", desc="...") {
+    stall_and_wait(dmaRequestQueue_in, address);
+  }
+
+  action(wkad_wakeUpAllDependents, "wkad", desc="wake-up all dependents") {
+    wakeUpAllBuffers();
   }
 
   transition(READY, ReadRequest, BUSY_RD) {
+    v_allocateTBE;
     s_sendReadRequest;
     p_popRequestQueue;
   }
 
   transition(READY, WriteRequest, BUSY_WR) {
+    v_allocateTBE;
     s_sendWriteRequest;
     p_popRequestQueue;
   }
 
   transition(BUSY_RD, Data, READY) {
+    t_updateTBEData;
     d_dataCallback;
+    w_deallocateTBE;
     p_popResponseQueue;
+    wkad_wakeUpAllDependents;
   }
 
   transition(BUSY_WR, Ack, READY) {
     a_ackCallback;
+    w_deallocateTBE;
     p_popResponseQueue;
+    wkad_wakeUpAllDependents;
   }
+
+  transition({BUSY_RD,BUSY_WR}, {ReadRequest,WriteRequest}) {
+     zz_stallAndWaitRequestQueue;
+  }
+
 }

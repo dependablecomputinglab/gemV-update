@@ -68,7 +68,7 @@ void zeroRegisters(TC *tc);
 // Alpha IPR register accessors
 inline bool PcPAL(Addr addr) { return addr & 0x3; }
 inline void startupCPU(ThreadContext *tc, int cpuId)
-{ tc->activate(Cycles(0)); }
+{ tc->activate(); }
 
 ////////////////////////////////////////////////////////////////////////
 //
@@ -78,7 +78,7 @@ inline void startupCPU(ThreadContext *tc, int cpuId)
 inline Addr PteAddr(Addr a) { return (a & PteMask) << PteShift; }
 
 // User Virtual
-inline bool IsUSeg(Addr a) { return USegBase <= a && a <= USegEnd; }
+inline bool IsUSeg(Addr a) { assert(USegBase == 0); return a <= USegEnd; }
 
 // Kernel Direct Mapped
 inline bool IsK0Seg(Addr a) { return K0SegBase <= a && a <= K0SegEnd; }
@@ -105,7 +105,7 @@ void copyMiscRegs(ThreadContext *src, ThreadContext *dest);
 void skipFunction(ThreadContext *tc);
 
 inline void
-advancePC(PCState &pc, const StaticInstPtr inst)
+advancePC(PCState &pc, const StaticInstPtr &inst)
 {
     pc.advance();
 }

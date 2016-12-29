@@ -40,7 +40,7 @@
 class Checkpoint;
 class PollQueue;
 
-class PollEvent
+class PollEvent : public Serializable
 {
   private:
     friend class PollQueue;
@@ -60,8 +60,8 @@ class PollEvent
 
     bool queued() { return queue != 0; }
 
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 class PollQueue

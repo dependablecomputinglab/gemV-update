@@ -50,6 +50,7 @@
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/se_translating_port_proxy.hh"
 #include "params/BaseCPU.hh"
+#include "sim/faults.hh"
 #include "sim/full_system.hh"
 #include "sim/process.hh"
 #include "sim/serialize.hh"
@@ -62,11 +63,13 @@ using namespace std;
 SimpleThread::SimpleThread(BaseCPU *_cpu, int _thread_num, System *_sys,
                            Process *_process, TheISA::TLB *_itb,
                            TheISA::TLB *_dtb, TheISA::ISA *_isa)
-    : ThreadState(_cpu, _thread_num, _process), isa(_isa), system(_sys),
+    : ThreadState(_cpu, _thread_num, _process), isa(_isa),
+      predicate(false), system(_sys),
       itb(_itb), dtb(_dtb)
 {
     clearArchRegs();
     tc = new ProxyThreadContext<SimpleThread>(this);
+    quiesceEvent = new EndQuiesceEvent(tc);
 }
 
 SimpleThread::SimpleThread(BaseCPU *_cpu, int _thread_num, System *_sys,
@@ -129,18 +132,18 @@ SimpleThread::copyState(ThreadContext *oldContext)
 }
 
 void
-SimpleThread::serialize(ostream &os)
+SimpleThread::serialize(CheckpointOut &cp) const
 {
-    ThreadState::serialize(os);
-    ::serialize(*tc, os);
+    ThreadState::serialize(cp);
+    ::serialize(*tc, cp);
 }
 
 
 void
-SimpleThread::unserialize(Checkpoint *cp, const std::string &section)
+SimpleThread::unserialize(CheckpointIn &cp)
 {
-    ThreadState::unserialize(cp, section);
-    ::unserialize(*tc, cp, section);
+    ThreadState::unserialize(cp);
+    ::unserialize(*tc, cp);
 }
 
 void
@@ -152,28 +155,20 @@ SimpleThread::startup()
 void
 SimpleThread::dumpFuncProfile()
 {
-    std::ostream *os = simout.create(csprintf("profile.%s.dat",
-                                              baseCpu->name()));
-    profile->dump(tc, *os);
+    OutputStream *os(simout.create(csprintf("profile.%s.dat", baseCpu->name())));
+    profile->dump(tc, *os->stream());
+    simout.close(os);
 }
 
 void
-SimpleThread::activate(Cycles delay)
+SimpleThread::activate()
 {
     if (status() == ThreadContext::Active)
         return;
 
     lastActivate = curTick();
-
-//    if (status() == ThreadContext::Unallocated) {
-//      cpu->activateWhenReady(_threadId);
-//      return;
-//   }
-
     _status = ThreadContext::Active;
-
-    // status() == Suspended
-    baseCpu->activateContext(_threadId, delay);
+    baseCpu->activateContext(_threadId);
 }
 
 void
@@ -213,3 +208,18 @@ SimpleThread::copyArchRegs(ThreadContext *src_tc)
     TheISA::copyRegs(src_tc, tc);
 }
 
+// The following methods are defined in src/arch/alpha/ev5.cc for
+// Alpha.
+#if THE_ISA != ALPHA_ISA
+Fault
+SimpleThread::hwrei()
+{
+    return NoFault;
+}
+
+bool
+SimpleThread::simPalCheck(int palFunc)
+{
+    return true;
+}
+#endif

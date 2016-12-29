@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 ARM Limited
+ * Copyright (c) 2011, 2014 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -49,6 +49,7 @@
 #include "base/types.hh"
 #include "cpu/pred/bpred_unit.hh"
 #include "cpu/pred/sat_counter.hh"
+#include "params/LocalBP.hh"
 
 /**
  * Implements a local predictor that uses the PC to index into a table of
@@ -63,9 +64,9 @@ class LocalBP : public BPredUnit
     /**
      * Default branch predictor constructor.
      */
-    LocalBP(const Params *params);
+    LocalBP(const LocalBPParams *params);
 
-    virtual void uncondBranch(void * &bp_history);
+    virtual void uncondBranch(ThreadID tid, Addr pc, void * &bp_history);
 
     /**
      * Looks up the given address in the branch predictor and returns
@@ -74,7 +75,7 @@ class LocalBP : public BPredUnit
      * @param bp_history Pointer to any bp history state.
      * @return Whether or not the branch is taken.
      */
-    bool lookup(Addr branch_addr, void * &bp_history);
+    bool lookup(ThreadID tid, Addr branch_addr, void * &bp_history);
 
     /**
      * Updates the branch predictor to Not Taken if a BTB entry is
@@ -83,16 +84,20 @@ class LocalBP : public BPredUnit
      * @param bp_history Pointer to any bp history state.
      * @return Whether or not the branch is taken.
      */
-    void btbUpdate(Addr branch_addr, void * &bp_history);
+    void btbUpdate(ThreadID tid, Addr branch_addr, void * &bp_history);
 
     /**
      * Updates the branch predictor with the actual result of a branch.
      * @param branch_addr The address of the branch to update.
      * @param taken Whether or not the branch was taken.
      */
-    void update(Addr branch_addr, bool taken, void *bp_history, bool squashed);
+    void update(ThreadID tid, Addr branch_addr, bool taken, void *bp_history,
+                bool squashed);
 
-    void squash(void *bp_history)
+    void retireSquashed(ThreadID tid, void *bp_history)
+    { assert(bp_history == NULL); }
+
+    void squash(ThreadID tid, void *bp_history)
     { assert(bp_history == NULL); }
 
     void reset();
@@ -120,9 +125,6 @@ class LocalBP : public BPredUnit
 
     /** Number of bits of the local predictor's counters. */
     unsigned localCtrBits;
-
-    /** Number of bits to shift the PC when calculating index. */
-    unsigned instShiftAmt;
 
     /** Mask to get index bits. */
     unsigned indexMask;

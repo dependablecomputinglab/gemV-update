@@ -35,6 +35,7 @@
 #
 # Authors: Andreas Hansson
 #          Uri Wiener
+#          Sascha Bischoff
 
 #####################################################################
 #
@@ -58,6 +59,7 @@
 
 import m5, os, re
 from m5.SimObject import isRoot, isSimObjectVector
+from m5.params import PortRef
 from m5.util import warn
 try:
     import pydot
@@ -106,7 +108,7 @@ def dot_create_edges(simNode, callgraph):
             full_port_name = full_path + "_" + port_name
             port_node = dot_create_node(simNode, full_port_name, port_name)
             # create edges
-            if type(port) is m5.params.PortRef:
+            if isinstance(port, PortRef):
                 dot_add_edge(simNode, callgraph, full_port_name, port)
             else:
                 for p in port.elements:
@@ -172,7 +174,7 @@ def dot_create_node(simNode, full_path, label):
 class NodeType:
     SYS = 0
     CPU = 1
-    BUS = 2
+    XBAR = 2
     MEM = 3
     DEV = 4
     OTHER = 5
@@ -189,8 +191,8 @@ def get_node_type(simNode):
     elif 'PioDevice' in dir(m5.objects) and \
             isinstance(simNode, m5.objects.PioDevice):
         return NodeType.DEV
-    elif isinstance(simNode, m5.objects.BaseBus):
-        return NodeType.BUS
+    elif isinstance(simNode, m5.objects.BaseXBar):
+        return NodeType.XBAR
     elif isinstance(simNode, m5.objects.AbstractMemory):
         return NodeType.MEM
     else:
@@ -204,7 +206,7 @@ def get_type_colour(nodeType):
         return (228, 231, 235)
     elif nodeType == NodeType.CPU:
         return (187, 198, 217)
-    elif nodeType == NodeType.BUS:
+    elif nodeType == NodeType.XBAR:
         return (111, 121, 140)
     elif nodeType == NodeType.MEM:
         return (94, 89, 88)
@@ -255,6 +257,96 @@ def dot_gen_colour(simNode, isPort = False):
 def dot_rgb_to_html(r, g, b):
     return "#%.2x%.2x%.2x" % (r, g, b)
 
+# We need to create all of the clock domains. We abuse the alpha channel to get
+# the correct domain colouring.
+def dot_add_clk_domain(c_dom, v_dom):
+    label = "\"" + str(c_dom) + "\ :\ " + str(v_dom) + "\""
+    label = re.sub('\.', '_', str(label))
+    full_path = re.sub('\.', '_', str(c_dom))
+    return pydot.Cluster( \
+                     full_path, \
+                     shape = "Mrecord", \
+                     label = label, \
+                     style = "\"rounded, filled, dashed\"", \
+                     color = "#000000", \
+                     fillcolor = "#AFC8AF8F", \
+                     fontname = "Arial", \
+                     fontsize = "14", \
+                     fontcolor = "#000000" \
+                     )
+
+def dot_create_dvfs_nodes(simNode, callgraph, domain=None):
+    if isRoot(simNode):
+        label = "root"
+    else:
+        label = simNode._name
+    full_path = re.sub('\.', '_', simNode.path())
+    # add class name under the label
+    label = "\"" + label + " \\n: " + simNode.__class__.__name__ + "\""
+
+    # each component is a sub-graph (cluster)
+    cluster = dot_create_cluster(simNode, full_path, label)
+
+    # create nodes per port
+    for port_name in simNode._ports.keys():
+        port = simNode._port_refs.get(port_name, None)
+        if port != None:
+            full_port_name = full_path + "_" + port_name
+            port_node = dot_create_node(simNode, full_port_name, port_name)
+            cluster.add_node(port_node)
+
+    # Dictionary of DVFS domains
+    dvfs_domains = {}
+
+    # recurse to children
+    if simNode._children:
+        for c in simNode._children:
+            child = simNode._children[c]
+            if isSimObjectVector(child):
+                for obj in child:
+                    try:
+                        c_dom = obj.__getattr__('clk_domain')
+                        v_dom = c_dom.__getattr__('voltage_domain')
+                    except AttributeError:
+                        # Just re-use the domain from above
+                        c_dom = domain
+                        v_dom = c_dom.__getattr__('voltage_domain')
+                        pass
+
+                    if c_dom == domain or c_dom == None:
+                        dot_create_dvfs_nodes(obj, cluster, domain)
+                    else:
+                        if c_dom not in dvfs_domains:
+                            dvfs_cluster = dot_add_clk_domain(c_dom, v_dom)
+                            dvfs_domains[c_dom] = dvfs_cluster
+                        else:
+                            dvfs_cluster = dvfs_domains[c_dom]
+                        dot_create_dvfs_nodes(obj, dvfs_cluster, c_dom)
+            else:
+                try:
+                    c_dom = child.__getattr__('clk_domain')
+                    v_dom = c_dom.__getattr__('voltage_domain')
+                except AttributeError:
+                    # Just re-use the domain from above
+                    c_dom = domain
+                    v_dom = c_dom.__getattr__('voltage_domain')
+                    pass
+
+                if c_dom == domain or c_dom == None:
+                    dot_create_dvfs_nodes(child, cluster, domain)
+                else:
+                    if c_dom not in dvfs_domains:
+                        dvfs_cluster = dot_add_clk_domain(c_dom, v_dom)
+                        dvfs_domains[c_dom] = dvfs_cluster
+                    else:
+                        dvfs_cluster = dvfs_domains[c_dom]
+                    dot_create_dvfs_nodes(child, dvfs_cluster, c_dom)
+
+    for key in dvfs_domains:
+        cluster.add_subgraph(dvfs_domains[key])
+
+    callgraph.add_subgraph(cluster)
+
 def do_dot(root, outdir, dotFilename):
     if not pydot:
         return
@@ -272,5 +364,29 @@ def do_dot(root, outdir, dotFilename):
         # So avoid terminating simulation unnecessarily
         callgraph.write_svg(dot_filename + ".svg")
         callgraph.write_pdf(dot_filename + ".pdf")
+    except:
+        warn("failed to generate dot output from %s", dot_filename)
+
+def do_dvfs_dot(root, outdir, dotFilename):
+    if not pydot:
+        return
+
+    # There is a chance that we are unable to resolve the clock or
+    # voltage domains. If so, we fail silently.
+    try:
+        dvfsgraph = pydot.Dot(graph_type='digraph', ranksep='1.3')
+        dot_create_dvfs_nodes(root, dvfsgraph)
+        dot_create_edges(root, dvfsgraph)
+        dot_filename = os.path.join(outdir, dotFilename)
+        dvfsgraph.write(dot_filename)
+    except:
+        warn("Failed to generate dot graph for DVFS domains")
+        return
+
+    try:
+        # dot crashes if the figure is extremely wide.
+        # So avoid terminating simulation unnecessarily
+        dvfsgraph.write_svg(dot_filename + ".svg")
+        dvfsgraph.write_pdf(dot_filename + ".pdf")
     except:
         warn("failed to generate dot output from %s", dot_filename)

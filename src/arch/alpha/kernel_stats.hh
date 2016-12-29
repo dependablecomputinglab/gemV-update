@@ -86,8 +86,8 @@ class Statistics : public ::Kernel::Statistics
     void setIdleProcess(Addr idle, ThreadContext *tc);
 
   public:
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 } // namespace Kernel

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2014 ARM Limited
  * All rights reserved.
  *
  * The license below extends only to copyright in the software and shall
@@ -53,6 +53,7 @@
 
 #include "base/callback.hh"
 #include "base/statistics.hh"
+#include "mem/cache/blk.hh"
 #include "params/BaseTags.hh"
 #include "sim/clocked_object.hh"
 #include "base/vulnerability/vul_tag.hh"                  //VUL_CACHE
@@ -69,9 +70,14 @@ class BaseTags : public ClockedObject
     const unsigned blkSize;
     /** The size of the cache. */
     const unsigned size;
-    /** The hit latency of the cache. */
-    const Cycles hitLatency;
-
+    /** The tag lookup latency of the cache. */
+    const Cycles lookupLatency;
+    /**
+     * The total access latency of the cache. This latency
+     * is different depending on the cache access mode
+     * (parallel or sequential)
+     */
+    const Cycles accessLatency;
     /** Pointer to the parent cache. */
     BaseCache *cache;
 
@@ -122,6 +128,20 @@ class BaseTags : public ClockedObject
     /** Average occ % of each requestor using the cache */
     Stats::Formula avgOccs;
 
+    /** Occupancy of each context/cpu using the cache */
+    Stats::Vector occupanciesTaskId;
+
+    /** Occupancy of each context/cpu using the cache */
+    Stats::Vector2d ageTaskId;
+
+    /** Occ % of each context/cpu using the cache */
+    Stats::Formula percentOccsTaskId;
+
+    /** Number of tags consulted over all accesses. */
+    Stats::Scalar tagAccesses;
+    /** Number of data blocks consulted over all accesses. */
+    Stats::Scalar dataAccesses;
+
     /**
      * @}
      */
@@ -156,10 +176,9 @@ class BaseTags : public ClockedObject
     virtual void cleanupRefs() {}
 
     /**
-     *iterated through all blocks and clear all locks
-     *Needed to clear all lock tracking at once
+     * Computes stats just prior to dump event
      */
-    virtual void clearLocks() {}
+    virtual void computeStats() {}
 
     /**
      * Print all tags used
@@ -171,6 +190,69 @@ class BaseTags : public ClockedObject
 
     /** Enable/disable vulnerability analysis */
     bool enableVulAnalysis;                                     //VUL_TAG
+    
+    /**
+     * Find a block using the memory address
+     */
+    virtual CacheBlk * findBlock(Addr addr, bool is_secure) const = 0;
+
+    /**
+     * Calculate the block offset of an address.
+     * @param addr the address to get the offset of.
+     * @return the block offset.
+     */
+    int extractBlkOffset(Addr addr) const
+    {
+        return (addr & (Addr)(blkSize-1));
+    }
+
+    /**
+     * Find the cache block given set and way
+     * @param set The set of the block.
+     * @param way The way of the block.
+     * @return The cache block.
+     */
+    virtual CacheBlk *findBlockBySetAndWay(int set, int way) const = 0;
+
+    /**
+     * Limit the allocation for the cache ways.
+     * @param ways The maximum number of ways available for replacement.
+     */
+    virtual void setWayAllocationMax(int ways)
+    {
+        panic("This tag class does not implement way allocation limit!\n");
+    }
+
+    /**
+     * Get the way allocation mask limit.
+     * @return The maximum number of ways available for replacement.
+     */
+    virtual int getWayAllocationMax() const
+    {
+        panic("This tag class does not implement way allocation limit!\n");
+        return -1;
+    }
+
+    virtual unsigned getNumSets() const = 0;
+
+    virtual unsigned getNumWays() const = 0;
+
+    virtual void invalidate(CacheBlk *blk) = 0;
+
+    virtual CacheBlk* accessBlock(Addr addr, bool is_secure, Cycles &lat,
+                                  int context_src) = 0;
+
+    virtual Addr extractTag(Addr addr) const = 0;
+
+    virtual void insertBlock(PacketPtr pkt, CacheBlk *blk) = 0;
+
+    virtual Addr regenerateBlkAddr(Addr tag, unsigned set) const = 0;
+
+    virtual CacheBlk* findVictim(Addr addr) = 0;
+
+    virtual int extractSet(Addr addr) const = 0;
+
+    virtual void forEachBlk(CacheBlkVisitor &visitor) = 0;
 };
 
 class BaseTagsCallback : public Callback
@@ -179,6 +261,14 @@ class BaseTagsCallback : public Callback
   public:
     BaseTagsCallback(BaseTags *t) : tags(t) {}
     virtual void process() { tags->cleanupRefs(); };
+};
+
+class BaseTagsDumpCallback : public Callback
+{
+    BaseTags *tags;
+  public:
+    BaseTagsDumpCallback(BaseTags *t) : tags(t) {}
+    virtual void process() { tags->computeStats(); };
 };
 
 #endif //__BASE_TAGS_HH__

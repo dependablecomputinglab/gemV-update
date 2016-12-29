@@ -30,38 +30,36 @@
 #define __MEM_RUBY_FILTERS_BULKBLOOMFILTER_HH__
 
 #include <iostream>
-#include <string>
 #include <vector>
 
 #include "mem/ruby/common/Address.hh"
-#include "mem/ruby/common/Global.hh"
 #include "mem/ruby/filters/AbstractBloomFilter.hh"
 
 class BulkBloomFilter : public AbstractBloomFilter
 {
   public:
-    BulkBloomFilter(std::string config);
+    BulkBloomFilter(int size);
     ~BulkBloomFilter();
 
     void clear();
-    void increment(const Address& addr);
-    void decrement(const Address& addr);
+    void increment(Addr addr);
+    void decrement(Addr addr);
     void merge(AbstractBloomFilter * other_filter);
-    void set(const Address& addr);
-    void unset(const Address& addr);
+    void set(Addr addr);
+    void unset(Addr addr);
 
-    bool isSet(const Address& addr);
-    int getCount(const Address& addr);
+    bool isSet(Addr addr);
+    int getCount(Addr addr);
     int getTotalCount();
-    int getIndex(const Address& addr);
+    int getIndex(Addr addr);
     int readBit(const int index);
     void writeBit(const int index, const int value);
 
     void print(std::ostream& out) const;
 
   private:
-    int get_index(const Address& addr);
-    Address permute(const Address & addr);
+    int get_index(Addr addr);
+    Addr permute(Addr addr);
 
     std::vector<int> m_filter;
     std::vector<int> m_temp_filter;

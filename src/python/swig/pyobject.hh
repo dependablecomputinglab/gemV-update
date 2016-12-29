@@ -31,12 +31,17 @@
 #include <Python.h>
 
 #include "base/types.hh"
-#include "dev/etherint.hh"
+#include "dev/net/etherint.hh"
 #include "sim/serialize.hh"
 #include "sim/sim_object.hh"
 
 extern "C" SimObject *convertSwigSimObjectPtr(PyObject *);
-SimObject *resolveSimObject(const std::string &name);
+
+/** Resolve a SimObject name using the Python configuration */
+class PythonSimObjectResolver : public SimObjectResolver
+{
+    SimObject *resolveSimObject(const std::string &name);
+};
 
 EtherInt * lookupEthPort(SimObject *so, const std::string &name, int i);
 
@@ -53,14 +58,11 @@ serializeAll(const std::string &cpt_dir)
     Serializable::serializeAll(cpt_dir);
 }
 
-inline Checkpoint *
-getCheckpoint(const std::string &cpt_dir)
-{
-    return new Checkpoint(cpt_dir);
-}
+CheckpointIn *
+getCheckpoint(const std::string &cpt_dir);
 
 inline void
-unserializeGlobals(Checkpoint *cp)
+unserializeGlobals(CheckpointIn &cp)
 {
     Serializable::unserializeGlobals(cp);
 }

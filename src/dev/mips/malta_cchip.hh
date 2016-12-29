@@ -94,9 +94,9 @@ class MaltaCChip : public BasicPioDevice
      */
     MaltaCChip(Params *p);
 
-    virtual Tick read(PacketPtr pkt);
+    Tick read(PacketPtr pkt) override;
 
-    virtual Tick write(PacketPtr pkt);
+    Tick write(PacketPtr pkt) override;
 
     /**
      * post an RTC interrupt to the CPU
@@ -133,20 +133,8 @@ class MaltaCChip : public BasicPioDevice
      */
     void reqIPI(uint64_t ipreq);
 
-
-    /**
-     * Serialize this object to the given output stream.
-     * @param os The stream to serialize to.
-     */
-    virtual void serialize(std::ostream &os);
-
-    /**
-     * Reconstruct the state of this object from a checkpoint.
-     * @param cp The checkpoint use.
-     * @param section The section name of this object
-     */
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
-
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 #endif // __MALTA_CCHIP_HH__

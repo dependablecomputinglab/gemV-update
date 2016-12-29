@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2012 ARM Limited
+ * Copyright (c) 2010-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -53,6 +53,7 @@
 #include "cpu/thread_context.hh"
 #include "debug/Loader.hh"
 #include "kern/linux/events.hh"
+#include "kern/linux/helpers.hh"
 #include "mem/fs_translating_port_proxy.hh"
 #include "mem/physical.hh"
 #include "sim/stat_control.hh"
@@ -61,29 +62,32 @@ using namespace ArmISA;
 using namespace Linux;
 
 LinuxArmSystem::LinuxArmSystem(Params *p)
-    : ArmSystem(p),
+    : GenericArmSystem(p), dumpStatsPCEvent(nullptr),
       enableContextSwitchStatsDump(p->enable_context_switch_stats_dump),
-      kernelPanicEvent(NULL), kernelOopsEvent(NULL)
+      taskFile(nullptr), kernelPanicEvent(nullptr), kernelOopsEvent(nullptr)
 {
+    const std::string dmesg_output = name() + ".dmesg";
     if (p->panic_on_panic) {
-        kernelPanicEvent = addKernelFuncEventOrPanic<PanicPCEvent>(
-            "panic", "Kernel panic in simulated kernel");
+        kernelPanicEvent = addKernelFuncEventOrPanic<Linux::KernelPanicEvent>(
+            "panic", "Kernel panic in simulated kernel", dmesg_output);
     } else {
-#ifndef NDEBUG
-        kernelPanicEvent = addKernelFuncEventOrPanic<BreakPCEvent>("panic");
-#endif
+        kernelPanicEvent = addKernelFuncEventOrPanic<Linux::DmesgDumpEvent>(
+            "panic", "Kernel panic in simulated kernel", dmesg_output);
     }
 
     if (p->panic_on_oops) {
-        kernelOopsEvent = addKernelFuncEventOrPanic<PanicPCEvent>(
-            "oops_exit", "Kernel oops in guest");
+        kernelOopsEvent = addKernelFuncEventOrPanic<Linux::KernelPanicEvent>(
+            "oops_exit", "Kernel oops in guest", dmesg_output);
+    } else {
+        kernelOopsEvent = addKernelFuncEventOrPanic<Linux::DmesgDumpEvent>(
+            "oops_exit", "Kernel oops in guest", dmesg_output);
     }
 
     // With ARM udelay() is #defined to __udelay
     // newer kernels use __loop_udelay and __loop_const_udelay symbols
     uDelaySkipEvent = addKernelFuncEvent<UDelayEvent>(
         "__loop_udelay", "__udelay", 1000, 0);
-    if(!uDelaySkipEvent)
+    if (!uDelaySkipEvent)
         uDelaySkipEvent = addKernelFuncEventOrPanic<UDelayEvent>(
          "__udelay", "__udelay", 1000, 0);
 
@@ -91,30 +95,10 @@ LinuxArmSystem::LinuxArmSystem(Params *p)
     // time. Constant comes from code.
     constUDelaySkipEvent = addKernelFuncEvent<UDelayEvent>(
         "__loop_const_udelay", "__const_udelay", 1000, 107374);
-    if(!constUDelaySkipEvent)
+    if (!constUDelaySkipEvent)
         constUDelaySkipEvent = addKernelFuncEventOrPanic<UDelayEvent>(
          "__const_udelay", "__const_udelay", 1000, 107374);
 
-    secDataPtrAddr = 0;
-    secDataAddr = 0;
-    penReleaseAddr = 0;
-    kernelSymtab->findAddress("__secondary_data", secDataPtrAddr);
-    kernelSymtab->findAddress("secondary_data", secDataAddr);
-    kernelSymtab->findAddress("pen_release", penReleaseAddr);
-
-    secDataPtrAddr &= ~ULL(0x7F);
-    secDataAddr &= ~ULL(0x7F);
-    penReleaseAddr &= ~ULL(0x7F);
-}
-
-bool
-LinuxArmSystem::adderBootUncacheable(Addr a)
-{
-    Addr block = a & ~ULL(0x7F);
-    if (block == secDataPtrAddr || block == secDataAddr ||
-            block == penReleaseAddr)
-        return true;
-    return false;
 }
 
 void
@@ -124,14 +108,14 @@ LinuxArmSystem::initState()
     // address map being resolved in the interconnect
 
     // Call the initialisation of the super class
-    ArmSystem::initState();
+    GenericArmSystem::initState();
 
     // Load symbols at physical address, we might not want
     // to do this permanently, for but early bootup work
     // it is helpful.
     if (params()->early_kernel_symbols) {
-        kernel->loadGlobalSymbols(kernelSymtab, loadAddrMask);
-        kernel->loadGlobalSymbols(debugSymbolTable, loadAddrMask);
+        kernel->loadGlobalSymbols(kernelSymtab, 0, 0, loadAddrMask);
+        kernel->loadGlobalSymbols(debugSymbolTable, 0, 0, loadAddrMask);
     }
 
     // Setup boot data structure
@@ -145,7 +129,8 @@ LinuxArmSystem::initState()
     if (kernel_has_fdt_support && dtb_file_specified) {
         // Kernel supports flattened device tree and dtb file specified.
         // Using Device Tree Blob to describe system configuration.
-        inform("Loading DTB file: %s\n", params()->dtb_filename);
+        inform("Loading DTB file: %s at address %#x\n", params()->dtb_filename,
+                params()->atags_addr + loadAddrOffset);
 
         ObjectFile *dtb_file = createObjectFile(params()->dtb_filename, true);
         if (!dtb_file) {
@@ -165,7 +150,7 @@ LinuxArmSystem::initState()
                  "to DTB file: %s\n", params()->dtb_filename);
         }
 
-        dtb_file->setTextBase(params()->atags_addr);
+        dtb_file->setTextBase(params()->atags_addr + loadAddrOffset);
         dtb_file->loadSections(physProxy);
         delete dtb_file;
     } else {
@@ -215,15 +200,17 @@ LinuxArmSystem::initState()
         DPRINTF(Loader, "Boot atags was %d bytes in total\n", size << 2);
         DDUMP(Loader, boot_data, size << 2);
 
-        physProxy.writeBlob(params()->atags_addr, boot_data, size << 2);
+        physProxy.writeBlob(params()->atags_addr + loadAddrOffset, boot_data,
+                size << 2);
 
         delete[] boot_data;
     }
 
+    // Kernel boot requirements to set up r0, r1 and r2 in ARMv7
     for (int i = 0; i < threadContexts.size(); i++) {
         threadContexts[i]->setIntReg(0, 0);
         threadContexts[i]->setIntReg(1, params()->machine_type);
-        threadContexts[i]->setIntReg(2, params()->atags_addr);
+        threadContexts[i]->setIntReg(2, params()->atags_addr + loadAddrOffset);
     }
 }
 
@@ -258,7 +245,7 @@ LinuxArmSystem::startup()
         for (int i = 0; i < _numContexts; i++) {
             ThreadContext *tc = threadContexts[i];
             uint32_t pid = tc->getCpuPtr()->getPid();
-            if (pid != Request::invldPid) {
+            if (pid != BaseCPU::invldPid) {
                 mapPid(tc, pid);
                 tc->getCpuPtr()->taskId(taskMap[pid]);
             }
@@ -280,6 +267,12 @@ LinuxArmSystem::mapPid(ThreadContext *tc, uint32_t pid)
             taskMap[pid] = map_size;
         }
     }
+}
+
+void
+LinuxArmSystem::dumpDmesg()
+{
+    Linux::dumpDmesg(getThreadContext(0), std::cout);
 }
 
 /** This function is called whenever the the kernel function
@@ -321,15 +314,15 @@ DumpStatsPCEvent::process(ThreadContext *tc)
     tc->getCpuPtr()->taskId(taskMap[pid]);
     tc->getCpuPtr()->setPid(pid);
 
-    std::ostream* taskFile = sys->taskFile;
+    OutputStream* taskFile = sys->taskFile;
 
     // Task file is read by cache occupancy plotting script or
     // Streamline conversion script.
-    ccprintf(*taskFile,
+    ccprintf(*(taskFile->stream()),
              "tick=%lld %d cpu_id=%d next_pid=%d next_tgid=%d next_task=%s\n",
              curTick(), taskMap[pid], tc->cpuId(), (int) pid, (int) tgid,
              next_task_str);
-    taskFile->flush();
+    taskFile->stream()->flush();
 
     // Dump and reset statistics
     Stats::schedStatEvent(true, true, curTick(), 0);

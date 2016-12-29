@@ -50,7 +50,7 @@
 
 namespace X86ISA
 {
-    void X86FaultBase::invoke(ThreadContext * tc, StaticInstPtr inst)
+    void X86FaultBase::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         if (!FullSystem) {
             FaultBase::invoke(tc, inst);
@@ -103,8 +103,8 @@ namespace X86ISA
 
         return ss.str();
     }
-    
-    void X86Trap::invoke(ThreadContext * tc, StaticInstPtr inst)
+
+    void X86Trap::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         X86FaultBase::invoke(tc);
         if (!FullSystem)
@@ -116,13 +116,13 @@ namespace X86ISA
         pc.uEnd();
     }
 
-    void X86Abort::invoke(ThreadContext * tc, StaticInstPtr inst)
+    void X86Abort::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         panic("Abort exception!");
     }
 
     void
-    InvalidOpcode::invoke(ThreadContext * tc, StaticInstPtr inst)
+    InvalidOpcode::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         if (FullSystem) {
             X86Fault::invoke(tc, inst);
@@ -132,9 +132,12 @@ namespace X86ISA
         }
     }
 
-    void PageFault::invoke(ThreadContext * tc, StaticInstPtr inst)
+    void PageFault::invoke(ThreadContext * tc, const StaticInstPtr &inst)
     {
         if (FullSystem) {
+            /* Invalidate any matching TLB entries before handling the page fault */
+            tc->getITBPtr()->demapPage(addr, 0);
+            tc->getDTBPtr()->demapPage(addr, 0);
             HandyM5Reg m5reg = tc->readMiscRegNoEffect(MISCREG_M5_REG);
             X86FaultBase::invoke(tc);
             /*
@@ -170,7 +173,7 @@ namespace X86ISA
     }
 
     void
-    InitInterrupt::invoke(ThreadContext *tc, StaticInstPtr inst)
+    InitInterrupt::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     {
         DPRINTF(Faults, "Init interrupt.\n");
         // The otherwise unmodified integer registers should be set to 0.
@@ -245,15 +248,21 @@ namespace X86ISA
         tc->setMiscReg(MISCREG_IDTR_BASE, 0);
         tc->setMiscReg(MISCREG_IDTR_LIMIT, 0xffff);
 
+        SegAttr tslAttr = 0;
+        tslAttr.present = 1;
+        tslAttr.type = 2; // LDT
         tc->setMiscReg(MISCREG_TSL, 0);
         tc->setMiscReg(MISCREG_TSL_BASE, 0);
         tc->setMiscReg(MISCREG_TSL_LIMIT, 0xffff);
-        tc->setMiscReg(MISCREG_TSL_ATTR, 0);
+        tc->setMiscReg(MISCREG_TSL_ATTR, tslAttr);
 
+        SegAttr trAttr = 0;
+        trAttr.present = 1;
+        trAttr.type = 3; // Busy 16-bit TSS
         tc->setMiscReg(MISCREG_TR, 0);
         tc->setMiscReg(MISCREG_TR_BASE, 0);
         tc->setMiscReg(MISCREG_TR_LIMIT, 0xffff);
-        tc->setMiscReg(MISCREG_TR_ATTR, 0);
+        tc->setMiscReg(MISCREG_TR_ATTR, trAttr);
 
         // This value should be the family/model/stepping of the processor.
         // (page 418). It should be consistent with the value from CPUID, but
@@ -282,7 +291,7 @@ namespace X86ISA
     }
 
     void
-    StartupInterrupt::invoke(ThreadContext *tc, StaticInstPtr inst)
+    StartupInterrupt::invoke(ThreadContext *tc, const StaticInstPtr &inst)
     {
         DPRINTF(Faults, "Startup interrupt with vector %#x.\n", vector);
         HandyM5Reg m5Reg = tc->readMiscReg(MISCREG_M5_REG);

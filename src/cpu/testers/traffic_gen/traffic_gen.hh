@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013, 2016 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -41,7 +41,8 @@
 #ifndef __CPU_TRAFFIC_GEN_TRAFFIC_GEN_HH__
 #define __CPU_TRAFFIC_GEN_TRAFFIC_GEN_HH__
 
-#include "base/hashmap.hh"
+#include <unordered_map>
+
 #include "base/statistics.hh"
 #include "cpu/testers/traffic_gen/generators.hh"
 #include "mem/mem_object.hh"
@@ -75,6 +76,21 @@ class TrafficGen : public MemObject
     void enterState(uint32_t newState);
 
     /**
+     * Resolve a file path in the configuration file.
+     *
+     * This method resolves a relative path to a file that has been
+     * referenced in the configuration file. It first tries to resolve
+     * the file relative to the configuration file's path. If that
+     * fails, it falls back to constructing a path relative to the
+     * current working directory.
+     *
+     * Absolute paths are returned unmodified.
+     *
+     * @param name Path to resolve
+     */
+    std::string resolveFile(const std::string &name);
+
+    /**
      * Parse the config file and build the state map and
      * transition matrix.
      */
@@ -91,7 +107,12 @@ class TrafficGen : public MemObject
      * Receive a retry from the neighbouring port and attempt to
      * resend the waiting packet.
      */
-    void recvRetry();
+    void recvReqRetry();
+
+    /**
+     * Method to inform the user we have made no progress.
+     */
+    void noProgress();
 
     /** Struct to represent a probabilistic transition during parsing. */
     struct Transition {
@@ -122,6 +143,17 @@ class TrafficGen : public MemObject
      */
     const bool elasticReq;
 
+    /**
+     * Time to tolerate waiting for retries (not making progress),
+     * until we declare things broken.
+     */
+    const Tick progressCheck;
+
+    /**
+     * Event to keep track of our progress, or lack thereof.
+     */
+    EventWrapper<TrafficGen, &TrafficGen::noProgress> noProgressEvent;
+
     /** Time of next transition */
     Tick nextTransitionTick;
 
@@ -135,7 +167,7 @@ class TrafficGen : public MemObject
     uint32_t currState;
 
     /** Map of generator states */
-    m5::hash_map<uint32_t, BaseGen*> states;
+    std::unordered_map<uint32_t, BaseGen*> states;
 
     /** Master port specialisation for the traffic generator */
     class TrafficGenPort : public MasterPort
@@ -148,9 +180,15 @@ class TrafficGen : public MemObject
 
       protected:
 
-        void recvRetry() { trafficGen.recvRetry(); }
+        void recvReqRetry() { trafficGen.recvReqRetry(); }
 
         bool recvTimingResp(PacketPtr pkt);
+
+        void recvTimingSnoopReq(PacketPtr pkt) { }
+
+        void recvFunctionalSnoop(PacketPtr pkt) { }
+
+        Tick recvAtomicSnoop(PacketPtr pkt) { return 0; }
 
       private:
 
@@ -170,8 +208,7 @@ class TrafficGen : public MemObject
     /** Event for scheduling updates */
     EventWrapper<TrafficGen, &TrafficGen::update> updateEvent;
 
-    /** Manager to signal when drained */
-    DrainManager* drainManager;
+    uint64_t numSuppressed;
 
     /** Count the number of generated packets. */
     Stats::Scalar numPackets;
@@ -188,21 +225,20 @@ class TrafficGen : public MemObject
 
     ~TrafficGen() {}
 
-    virtual BaseMasterPort& getMasterPort(const std::string &if_name,
-                                          PortID idx = InvalidPortID);
+    BaseMasterPort& getMasterPort(const std::string &if_name,
+                                  PortID idx = InvalidPortID) override;
 
-    void init();
+    void init() override;
 
-    void initState();
+    void initState() override;
 
-    unsigned int drain(DrainManager *dm);
+    DrainState drain() override;
 
-    void serialize(std::ostream &os);
-
-    void unserialize(Checkpoint* cp, const std::string& section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /** Register statistics */
-    void regStats();
+    void regStats() override;
 
 };
 

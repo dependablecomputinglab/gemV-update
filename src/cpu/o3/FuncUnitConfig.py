@@ -39,6 +39,7 @@
 # Authors: Kevin Lim
 
 from m5.SimObject import SimObject
+from m5.defines import buildEnv
 from m5.params import *
 from FuncUnit import *
 
@@ -48,7 +49,15 @@ class IntALU(FUDesc):
 
 class IntMultDiv(FUDesc):
     opList = [ OpDesc(opClass='IntMult', opLat=3),
-               OpDesc(opClass='IntDiv', opLat=20, issueLat=19) ]
+               OpDesc(opClass='IntDiv', opLat=20, pipelined=False) ]
+
+    # DIV and IDIV instructions in x86 are implemented using a loop which
+    # issues division microops.  The latency of these microops should really be
+    # one (or a small number) cycle each since each of these computes one bit
+    # of the quotient.
+    if buildEnv['TARGET_ISA'] in ('x86'):
+        opList[1].opLat=1
+
     count=2
 
 class FP_ALU(FUDesc):
@@ -59,8 +68,10 @@ class FP_ALU(FUDesc):
 
 class FP_MultDiv(FUDesc):
     opList = [ OpDesc(opClass='FloatMult', opLat=4),
-               OpDesc(opClass='FloatDiv', opLat=12, issueLat=12),
-               OpDesc(opClass='FloatSqrt', opLat=24, issueLat=24) ]
+               OpDesc(opClass='FloatMultAcc', opLat=5),
+               OpDesc(opClass='FloatMisc', opLat=3),
+               OpDesc(opClass='FloatDiv', opLat=12, pipelined=False),
+               OpDesc(opClass='FloatSqrt', opLat=24, pipelined=False) ]
     count = 2
 
 class SIMD_Unit(FUDesc):
@@ -87,18 +98,21 @@ class SIMD_Unit(FUDesc):
     count = 4
 
 class ReadPort(FUDesc):
-    opList = [ OpDesc(opClass='MemRead') ]
+    opList = [ OpDesc(opClass='MemRead'),
+               OpDesc(opClass='FloatMemRead') ]
     count = 0
 
 class WritePort(FUDesc):
-    opList = [ OpDesc(opClass='MemWrite') ]
+    opList = [ OpDesc(opClass='MemWrite'),
+               OpDesc(opClass='FloatMemWrite') ]
     count = 0
 
 class RdWrPort(FUDesc):
-    opList = [ OpDesc(opClass='MemRead'), OpDesc(opClass='MemWrite') ]
+    opList = [ OpDesc(opClass='MemRead'), OpDesc(opClass='MemWrite'),
+               OpDesc(opClass='FloatMemRead'), OpDesc(opClass='FloatMemWrite')]
     count = 4
 
 class IprPort(FUDesc):
-    opList = [ OpDesc(opClass='IprAccess', opLat = 3, issueLat = 3) ]
+    opList = [ OpDesc(opClass='IprAccess', opLat = 3, pipelined = False) ]
     count = 1
 

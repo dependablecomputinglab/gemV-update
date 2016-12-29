@@ -57,7 +57,7 @@ SparcLiveProcess::SparcLiveProcess(LiveProcessParams * params,
 
     // XXX all the below need to be updated for SPARC - Ali
     brk_point = objFile->dataBase() + objFile->dataSize() + objFile->bssSize();
-    brk_point = roundUp(brk_point, VMPageSize);
+    brk_point = roundUp(brk_point, PageBytes);
 
     // Set pointer for next thread stack.  Reserve 8M for main stack.
     next_thread_stack_base = stack_base - (8 * 1024 * 1024);
@@ -166,7 +166,7 @@ Sparc32LiveProcess::initState()
     pstate.am = 1;
     tc->setMiscReg(MISCREG_PSTATE, pstate);
 
-    argsInit(32 / 8, VMPageSize);
+    argsInit(32 / 8, PageBytes);
 }
 
 void
@@ -180,7 +180,7 @@ Sparc64LiveProcess::initState()
     pstate.ie = 1;
     tc->setMiscReg(MISCREG_PSTATE, pstate);
 
-    argsInit(sizeof(IntReg), VMPageSize);
+    argsInit(sizeof(IntReg), PageBytes);
 }
 
 template<class IntType>
@@ -202,6 +202,9 @@ SparcLiveProcess::argsInit(int pageSize)
     // Even for a 32 bit process, the ABI says we still need to
     // maintain double word alignment of the stack pointer.
     uint64_t align = 16;
+
+    // Patch the ld_bias for dynamic executables.
+    updateBias();
 
     // load object file into target memory
     objFile->loadSections(initVirtMem);
@@ -234,7 +237,7 @@ SparcLiveProcess::argsInit(int pageSize)
         // Bits which describe the system hardware capabilities
         auxv.push_back(auxv_t(M5_AT_HWCAP, hwcap));
         // The system page size
-        auxv.push_back(auxv_t(M5_AT_PAGESZ, SparcISA::VMPageSize));
+        auxv.push_back(auxv_t(M5_AT_PAGESZ, SparcISA::PageBytes));
         // Defined to be 100 in the kernel source.
         // Frequency at which times() increments
         auxv.push_back(auxv_t(M5_AT_CLKTCK, 100));
@@ -245,10 +248,10 @@ SparcLiveProcess::argsInit(int pageSize)
         auxv.push_back(auxv_t(M5_AT_PHENT, elfObject->programHeaderSize()));
         // This is the number of program headers from the original elf file.
         auxv.push_back(auxv_t(M5_AT_PHNUM, elfObject->programHeaderCount()));
-        // This is the address of the elf "interpreter", It should be set
-        // to 0 for regular executables. It should be something else
-        // (not sure what) for dynamic libraries.
-        auxv.push_back(auxv_t(M5_AT_BASE, 0));
+        // This is the base address of the ELF interpreter; it should be
+        // zero for static executables or contain the base address for
+        // dynamic executables.
+        auxv.push_back(auxv_t(M5_AT_BASE, getBias()));
         // This is hardwired to 0 in the elf loading code in the kernel
         auxv.push_back(auxv_t(M5_AT_FLAGS, 0));
         // The entry point to the program
@@ -402,7 +405,7 @@ SparcLiveProcess::argsInit(int pageSize)
     // don't have anything like that, it should be set to 0.
     tc->setIntReg(1, 0);
 
-    tc->pcState(objFile->entryPoint());
+    tc->pcState(getStartPC());
 
     // Align the "stack_min" to a page boundary.
     stack_min = roundDown(stack_min, pageSize);
@@ -532,26 +535,25 @@ Sparc64LiveProcess::setSyscallArg(ThreadContext *tc, int i, IntReg val)
 }
 
 void
-SparcLiveProcess::setSyscallReturn(ThreadContext *tc,
-        SyscallReturn return_value)
+SparcLiveProcess::setSyscallReturn(ThreadContext *tc, SyscallReturn sysret)
 {
     // check for error condition.  SPARC syscall convention is to
     // indicate success/failure in reg the carry bit of the ccr
     // and put the return value itself in the standard return value reg ().
     PSTATE pstate = tc->readMiscRegNoEffect(MISCREG_PSTATE);
-    if (return_value.successful()) {
+    if (sysret.successful()) {
         // no error, clear XCC.C
         tc->setIntReg(NumIntArchRegs + 2,
-                tc->readIntReg(NumIntArchRegs + 2) & 0xEE);
-        IntReg val = return_value.value();
+                      tc->readIntReg(NumIntArchRegs + 2) & 0xEE);
+        IntReg val = sysret.returnValue();
         if (pstate.am)
             val = bits(val, 31, 0);
         tc->setIntReg(ReturnValueReg, val);
     } else {
         // got an error, set XCC.C
         tc->setIntReg(NumIntArchRegs + 2,
-                tc->readIntReg(NumIntArchRegs + 2) | 0x11);
-        IntReg val = -return_value.value();
+                      tc->readIntReg(NumIntArchRegs + 2) | 0x11);
+        IntReg val = sysret.errnoValue();
         if (pstate.am)
             val = bits(val, 31, 0);
         tc->setIntReg(ReturnValueReg, val);

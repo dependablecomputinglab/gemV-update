@@ -27,7 +27,6 @@
  */
 
 #include "base/intmath.hh"
-#include "base/str.hh"
 #include "mem/ruby/filters/H3BloomFilter.hh"
 
 using namespace std;
@@ -354,7 +353,7 @@ static int H3[64][16] = {
       394261773,  848616745,  15446017,   517723271,  },
 };
 
-H3BloomFilter::H3BloomFilter(string str)
+H3BloomFilter::H3BloomFilter(int size, int hashes, bool parallel)
 {
     //TODO: change this ugly init code...
     primes_list[0] = 9323;
@@ -378,21 +377,9 @@ H3BloomFilter::H3BloomFilter(string str)
     adds_list[4] = 7777;
     adds_list[5] = 65931;
 
-    vector<string> items;
-    tokenize(items, str, '_');
-    assert(items.size() == 3);
-
-    // head contains filter size, tail contains bit offset from block number
-    m_filter_size = atoi(items[0].c_str());
-    m_num_hashes = atoi(items[1].c_str());
-
-    if (items[2] == "Regular") {
-        isParallel = false;
-    } else if (items[2] == "Parallel") {
-        isParallel = true;
-    } else {
-        panic("ERROR: Incorrect config string for MultiHash Bloom! :%s", str);
-    }
+    m_filter_size = size;
+    m_num_hashes = hashes;
+    isParallel = parallel;
 
     m_filter_size_bits = floorLog2(m_filter_size);
 
@@ -416,13 +403,13 @@ H3BloomFilter::clear()
 }
 
 void
-H3BloomFilter::increment(const Address& addr)
+H3BloomFilter::increment(Addr addr)
 {
     // Not used
 }
 
 void
-H3BloomFilter::decrement(const Address& addr)
+H3BloomFilter::decrement(Addr addr)
 {
     // Not used
 }
@@ -432,13 +419,13 @@ H3BloomFilter::merge(AbstractBloomFilter *other_filter)
 {
     // assumes both filters are the same size!
     H3BloomFilter * temp = (H3BloomFilter*) other_filter;
-    for(int i = 0; i < m_filter_size; ++i){
+    for (int i = 0; i < m_filter_size; ++i){
         m_filter[i] |= (*temp)[i];
     }
 }
 
 void
-H3BloomFilter::set(const Address& addr)
+H3BloomFilter::set(Addr addr)
 {
     for (int i = 0; i < m_num_hashes; i++) {
         int idx = get_index(addr, i);
@@ -447,14 +434,14 @@ H3BloomFilter::set(const Address& addr)
 }
 
 void
-H3BloomFilter::unset(const Address& addr)
+H3BloomFilter::unset(Addr addr)
 {
     cout << "ERROR: Unset should never be called in a Bloom filter";
     assert(0);
 }
 
 bool
-H3BloomFilter::isSet(const Address& addr)
+H3BloomFilter::isSet(Addr addr)
 {
     bool res = true;
 
@@ -466,13 +453,13 @@ H3BloomFilter::isSet(const Address& addr)
 }
 
 int
-H3BloomFilter::getCount(const Address& addr)
+H3BloomFilter::getCount(Addr addr)
 {
     return isSet(addr)? 1: 0;
 }
 
 int
-H3BloomFilter::getIndex(const Address& addr)
+H3BloomFilter::getIndex(Addr addr)
 {
     return 0;
 }
@@ -505,10 +492,10 @@ H3BloomFilter::print(ostream& out) const
 }
 
 int
-H3BloomFilter::get_index(const Address& addr, int i)
+H3BloomFilter::get_index(Addr addr, int i)
 {
-    uint64 x = addr.getLineAddress();
-    // uint64 y = (x*mults_list[i] + adds_list[i]) % primes_list[i];
+    uint64_t x = makeLineAddress(addr);
+    // uint64_t y = (x*mults_list[i] + adds_list[i]) % primes_list[i];
     int y = hash_H3(x,i);
 
     if (isParallel) {
@@ -519,14 +506,14 @@ H3BloomFilter::get_index(const Address& addr, int i)
 }
 
 int
-H3BloomFilter::hash_H3(uint64 value, int index)
+H3BloomFilter::hash_H3(uint64_t value, int index)
 {
-    uint64 mask = 1;
-    uint64 val = value;
+    uint64_t mask = 1;
+    uint64_t val = value;
     int result = 0;
 
     for (int i = 0; i < 64; i++) {
-        if(val&mask) result ^= H3[i][index];
+        if (val&mask) result ^= H3[i][index];
         val = val >> 1;
     }
     return result;

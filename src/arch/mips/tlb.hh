@@ -37,6 +37,7 @@
 
 #include <map>
 
+#include "arch/generic/tlb.hh"
 #include "arch/mips/isa_traits.hh"
 #include "arch/mips/pagetable.hh"
 #include "arch/mips/utility.hh"
@@ -44,9 +45,7 @@
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/MipsTLB.hh"
-#include "sim/fault_fwd.hh"
 #include "sim/sim_object.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 
@@ -87,14 +86,17 @@ class TLB : public BaseTLB
     int probeEntry(Addr vpn,uint8_t) const;
     MipsISA::PTE *getEntry(unsigned) const;
     virtual ~TLB();
+
+    void takeOverFrom(BaseTLB *otlb) override {}
+
     int smallPages;
     int getsize() const { return size; }
 
     MipsISA::PTE &index(bool advance = true);
     void insert(Addr vaddr, MipsISA::PTE &pte);
     void insertAt(MipsISA::PTE &pte, unsigned Index, int _smallPages);
-    void flushAll();
-    void demapPage(Addr vaddr, uint64_t asn)
+    void flushAll() override;
+    void demapPage(Addr vaddr, uint64_t asn) override
     {
         panic("demapPage unimplemented.\n");
     }
@@ -105,10 +107,10 @@ class TLB : public BaseTLB
     static Fault checkCacheability(RequestPtr &req);
 
     // Checkpointing
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
-    void regStats();
+    void regStats() override;
 
     Fault translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode);
     void translateTiming(RequestPtr req, ThreadContext *tc,

@@ -33,10 +33,7 @@ Import('*')
 if env['PROTOCOL'] == 'None':
     Return()
 
-SimObject('Profiler.py')
-
 Source('AccessTraceForAddress.cc')
 Source('AddressProfiler.cc')
-Source('MemCntrlProfiler.cc')
 Source('Profiler.cc')
 Source('StoreTrace.cc')

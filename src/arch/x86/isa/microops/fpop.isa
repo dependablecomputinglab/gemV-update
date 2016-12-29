@@ -1,5 +1,7 @@
 // Copyright (c) 2007 The Hewlett-Packard Development Company
 // Copyright (c) 2012-2013 Mark D. Hill and David A. Wood
+// Copyright (c) 2015 Advanced Micro Devices, Inc.
+//
 // All rights reserved.
 //
 // The license below extends only to copyright in the software and shall
@@ -44,7 +46,7 @@
 //////////////////////////////////////////////////////////////////////////
 
 def template MicroFpOpExecute {{
-        Fault %(class_name)s::execute(%(CPU_exec_context)s *xc,
+        Fault %(class_name)s::execute(CPU_EXEC_CONTEXT *xc,
                 Trace::InstRecord *traceData) const
         {
             Fault fault = NoFault;
@@ -88,7 +90,7 @@ def template MicroFpOpDeclare {{
 }};
 
 def template MicroFpOpConstructor {{
-    inline %(class_name)s::%(class_name)s(
+    %(class_name)s::%(class_name)s(
             ExtMachInst machInst, const char * instMnem, uint64_t setFlags,
             InstRegIndex _src1, InstRegIndex _src2, InstRegIndex _dest,
             uint8_t _dataSize, int8_t _spm) :
@@ -270,6 +272,7 @@ let {{
         else_code = 'FpDestReg_uqw = FpDestReg_uqw;'
         cond_check = "checkCondition(ccFlagBits | cfofBits | dfBit | \
                                      ecfBit | ezfBit, src2)"
+        op_class = 'IntAluOp'
 
     class Xorfp(FpBinaryOp):
         code = 'FpDestReg_uqw = FpSrcReg1_uqw ^ FpSrcReg2_uqw;'
@@ -449,4 +452,5 @@ let {{
                     spm=spm, SetStatus=False, UpdateFTW=UpdateFTW)
 
         code = ''
+        op_class = 'IntAluOp'
 }};

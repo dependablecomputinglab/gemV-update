@@ -35,9 +35,9 @@
 
 #include <iostream>
 
+#include "base/misc.hh"
 #include "mem/protocol/AccessPermission.hh"
 #include "mem/ruby/common/Address.hh"
-#include "mem/ruby/common/Global.hh"
 #include "mem/ruby/slicc_interface/AbstractEntry.hh"
 
 class DataBlock;
@@ -51,9 +51,39 @@ class AbstractCacheEntry : public AbstractEntry
     // Get/Set permission of the entry
     void changePermission(AccessPermission new_perm);
 
-    Address m_Address; // Address of this block, required by CacheMemory
-    int m_locked; // Holds info whether the address is locked,
-                  // required for implementing LL/SC
+    // The methods below are those called by ruby runtime, add when it
+    // is absolutely necessary and should all be virtual function.
+    virtual DataBlock& getDataBlk()
+    { panic("getDataBlk() not implemented!"); }
+
+    int validBlocks;
+    virtual int& getNumValidBlocks()
+    {
+        return validBlocks;
+    }
+
+    // Functions for locking and unlocking the cache entry.  These are required
+    // for supporting atomic memory accesses.
+    void setLocked(int context);
+    void clearLocked();
+    bool isLocked(int context) const;
+
+    void setSetIndex(uint32_t s) { m_set_index = s; }
+    uint32_t getSetIndex() const { return m_set_index; }
+
+    void setWayIndex(uint32_t s) { m_way_index = s; }
+    uint32_t getWayIndex() const { return m_way_index; }
+
+    // Address of this block, required by CacheMemory
+    Addr m_Address;
+    // Holds info whether the address is locked.
+    // Required for implementing LL/SC operations.
+    int m_locked;
+
+  private:
+    // Set and way coordinates of the entry within the cache memory object.
+    uint32_t m_set_index;
+    uint32_t m_way_index;
 };
 
 inline std::ostream&

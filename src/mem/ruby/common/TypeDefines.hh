@@ -30,15 +30,8 @@
 #ifndef TYPEDEFINES_H
 #define TYPEDEFINES_H
 
-typedef unsigned long long uint64;
-typedef long long int64;
-
-typedef int64 Time;
-typedef uint64 physical_address_t;
-
-typedef int64 Index;            // what the address bit ripper returns
-typedef int LinkID;
-typedef int NodeID;
-typedef int SwitchID;
+typedef unsigned int LinkID;
+typedef unsigned int NodeID;
+typedef unsigned int SwitchID;
 
 #endif

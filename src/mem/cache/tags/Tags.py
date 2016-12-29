@@ -49,16 +49,32 @@ class BaseTags(ClockedObject):
     # Get the block size from the parent (system)
     block_size = Param.Int(Parent.cache_line_size, "block size in bytes")
 
-    # Get the hit latency from the parent (cache)
-    hit_latency = Param.Cycles(Parent.hit_latency,
-                               "The hit latency for this cache")
     vul_analysis = Param.Unsigned(Parent.vul_analysis, "Enable/disable vulnerability analysis")
+    tag_latency = Param.Cycles(Parent.tag_latency,
+                               "The tag lookup latency for this cache")
 
-class LRU(BaseTags):
+    # Get the RAM access latency from the parent (cache)
+    data_latency = Param.Cycles(Parent.data_latency,
+                               "The data access latency for this cache")
+
+    sequential_access = Param.Bool(Parent.sequential_access,
+        "Whether to access tags and data sequentially")
+
+class BaseSetAssoc(BaseTags):
+    type = 'BaseSetAssoc'
+    abstract = True
+    cxx_header = "mem/cache/tags/base_set_assoc.hh"
+    assoc = Param.Int(Parent.assoc, "associativity")
+
+class LRU(BaseSetAssoc):
     type = 'LRU'
     cxx_class = 'LRU'
     cxx_header = "mem/cache/tags/lru.hh"
-    assoc = Param.Int(Parent.assoc, "associativity")
+
+class RandomRepl(BaseSetAssoc):
+    type = 'RandomRepl'
+    cxx_class = 'RandomRepl'
+    cxx_header = "mem/cache/tags/random_repl.hh"
 
 class FALRU(BaseTags):
     type = 'FALRU'

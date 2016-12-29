@@ -41,10 +41,11 @@
 import m5
 from m5.defines import buildEnv
 from m5.objects import *
-from Benchmarks import *
+from common.Benchmarks import *
 
-import CpuConfig
-import MemConfig
+from common import CpuConfig
+from common import MemConfig
+from common import PlatformConfig
 
 def _listCpuTypes(option, opt, value, parser):
     CpuConfig.print_cpu_list()
@@ -54,15 +55,14 @@ def _listMemTypes(option, opt, value, parser):
     MemConfig.print_mem_list()
     sys.exit(0)
 
-def addCommonOptions(parser):
-    # system options
-    parser.add_option("--list-cpu-types",
-                      action="callback", callback=_listCpuTypes,
-                      help="List available CPU types")
-    parser.add_option("--cpu-type", type="choice", default="atomic",
-                      choices=CpuConfig.cpu_names(),
-                      help = "type of cpu to run with")
-    parser.add_option("--checker", action="store_true");
+def _listPlatformTypes(option, opt, value, parser):
+    PlatformConfig.print_platform_list()
+    sys.exit(0)
+
+# Add the very basic options that work also in the case of the no ISA
+# being used, and consequently no CPUs, but rather various types of
+# testers and traffic generators.
+def addNoISAOptions(parser):
     parser.add_option("-n", "--num-cpus", type="int", default=1)
     parser.add_option("--sys-voltage", action="store", type="string",
                       default='1.0V',
@@ -72,32 +72,32 @@ def addCommonOptions(parser):
                       default='1GHz',
                       help = """Top-level clock for blocks running at system
                       speed""")
-    parser.add_option("--cpu-clock", action="store", type="string",
-                      default='2GHz',
-                      help="Clock for blocks running at CPU speed")
-    parser.add_option("--smt", action="store_true", default=False,
-                      help = """
-                      Only used if multiple programs are specified. If true,
-                      then the number of threads per cpu is same as the
-                      number of programs.""")
 
     # Memory Options
     parser.add_option("--list-mem-types",
                       action="callback", callback=_listMemTypes,
                       help="List available memory types")
-    parser.add_option("--mem-type", type="choice", default="simple_mem",
+    parser.add_option("--mem-type", type="choice", default="DDR3_1600_x64",
                       choices=MemConfig.mem_names(),
                       help = "type of memory to use")
     parser.add_option("--mem-channels", type="int", default=1,
                       help = "number of memory channels")
+    parser.add_option("--mem-ranks", type="int", default=None,
+                      help = "number of memory ranks per channel")
     parser.add_option("--mem-size", action="store", type="string",
                       default="512MB",
                       help="Specify the physical memory size (single memory)")
 
+
+    parser.add_option("--memchecker", action="store_true")
+
     # Cache Options
+    parser.add_option("--external-memory-system", type="string",
+                      help="use external ports of this port_type for caches")
+    parser.add_option("--tlm-memory", type="string",
+                      help="use external port for SystemC TLM cosimulation")
     parser.add_option("--caches", action="store_true")
     parser.add_option("--l2cache", action="store_true")
-    parser.add_option("--fastmem", action="store_true")
     parser.add_option("--num-dirs", type="int", default=1)
     parser.add_option("--num-l2caches", type="int", default=1)
     parser.add_option("--num-l3caches", type="int", default=1)
@@ -129,20 +129,99 @@ def addCommonOptions(parser):
 
     # Run duration options
     parser.add_option("-m", "--abs-max-tick", type="int", default=m5.MaxTick,
-                      metavar="TICKS", help="Run to absolute simulated tick " \
+                      metavar="TICKS", help="Run to absolute simulated tick "
                       "specified including ticks from a restored checkpoint")
     parser.add_option("--rel-max-tick", type="int", default=None,
-                      metavar="TICKS", help="Simulate for specified number of" \
-                      " ticks relative to the simulation start tick (e.g. if " \
+                      metavar="TICKS", help="Simulate for specified number of"
+                      " ticks relative to the simulation start tick (e.g. if "
                       "restoring a checkpoint)")
     parser.add_option("--maxtime", type="float", default=None,
-                      help="Run to the specified absolute simulated time in " \
+                      help="Run to the specified absolute simulated time in "
                       "seconds")
+
+# Add common options that assume a non-NULL ISA.
+def addCommonOptions(parser):
+    # start by adding the base options that do not assume an ISA
+    addNoISAOptions(parser)
+
+    # system options
+    parser.add_option("--list-cpu-types",
+                      action="callback", callback=_listCpuTypes,
+                      help="List available CPU types")
+    parser.add_option("--cpu-type", type="choice", default="atomic",
+                      choices=CpuConfig.cpu_names(),
+                      help = "type of cpu to run with")
+    parser.add_option("--checker", action="store_true");
+    parser.add_option("--cpu-clock", action="store", type="string",
+                      default='2GHz',
+                      help="Clock for blocks running at CPU speed")
+    parser.add_option("--smt", action="store_true", default=False,
+                      help = """
+                      Only used if multiple programs are specified. If true,
+                      then the number of threads per cpu is same as the
+                      number of programs.""")
+    parser.add_option("--elastic-trace-en", action="store_true",
+                      help="""Enable capture of data dependency and instruction
+                      fetch traces using elastic trace probe.""")
+    # Trace file paths input to trace probe in a capture simulation and input
+    # to Trace CPU in a replay simulation
+    parser.add_option("--inst-trace-file", action="store", type="string",
+                      help="""Instruction fetch trace file input to
+                      Elastic Trace probe in a capture simulation and
+                      Trace CPU in a replay simulation""", default="")
+    parser.add_option("--data-trace-file", action="store", type="string",
+                      help="""Data dependency trace file input to
+                      Elastic Trace probe in a capture simulation and
+                      Trace CPU in a replay simulation""", default="")
+
+    parser.add_option("-l", "--lpae", action="store_true")
+    parser.add_option("-V", "--virtualisation", action="store_true")
+
+    parser.add_option("--fastmem", action="store_true")
+
+    # dist-gem5 options
+    parser.add_option("--dist", action="store_true",
+                      help="Parallel distributed gem5 simulation.")
+    parser.add_option("--dist-sync-on-pseudo-op", action="store_true",
+                      help="Use a pseudo-op to start dist-gem5 synchronization.")
+    parser.add_option("--is-switch", action="store_true",
+                      help="Select the network switch simulator process for a"\
+                      "distributed gem5 run")
+    parser.add_option("--dist-rank", default=0, action="store", type="int",
+                      help="Rank of this system within the dist gem5 run.")
+    parser.add_option("--dist-size", default=0, action="store", type="int",
+                      help="Number of gem5 processes within the dist gem5 run.")
+    parser.add_option("--dist-server-name",
+                      default="127.0.0.1",
+                      action="store", type="string",
+                      help="Name of the message server host\nDEFAULT: localhost")
+    parser.add_option("--dist-server-port",
+                      default=2200,
+                      action="store", type="int",
+                      help="Message server listen port\nDEFAULT: 2200")
+    parser.add_option("--dist-sync-repeat",
+                      default="0us",
+                      action="store", type="string",
+                      help="Repeat interval for synchronisation barriers among dist-gem5 processes\nDEFAULT: --ethernet-linkdelay")
+    parser.add_option("--dist-sync-start",
+                      default="5200000000000t",
+                      action="store", type="string",
+                      help="Time to schedule the first dist synchronisation barrier\nDEFAULT:5200000000000t")
+    parser.add_option("--ethernet-linkspeed", default="10Gbps",
+                        action="store", type="string",
+                        help="Link speed in bps\nDEFAULT: 10Gbps")
+    parser.add_option("--ethernet-linkdelay", default="10us",
+                      action="store", type="string",
+                      help="Link delay in seconds\nDEFAULT: 10us")
+
+    # Run duration options
     parser.add_option("-I", "--maxinsts", action="store", type="int",
                       default=None, help="""Total number of instructions to
                                             simulate (default: run forever)""")
     parser.add_option("--work-item-id", action="store", type="int",
                       help="the specific work id for exit & checkpointing")
+    parser.add_option("--num-work-ids", action="store", type="int",
+                      help="Number of distinct work item types")
     parser.add_option("--work-begin-cpu-id-exit", action="store", type="int",
                       help="exit when work starts on the specified cpu")
     parser.add_option("--work-end-exit-count", action="store", type="int",
@@ -152,12 +231,20 @@ def addCommonOptions(parser):
     parser.add_option("--init-param", action="store", type="int", default=0,
                       help="""Parameter available in simulation with m5
                               initparam""")
+    parser.add_option("--initialize-only", action="store_true", default=False,
+                      help="""Exit after initialization. Do not simulate time.
+                              Useful when gem5 is run as a library.""")
 
     # Simpoint options
     parser.add_option("--simpoint-profile", action="store_true",
                       help="Enable basic block profiling for SimPoints")
     parser.add_option("--simpoint-interval", type="int", default=10000000,
                       help="SimPoint interval in num of instructions")
+    parser.add_option("--take-simpoint-checkpoints", action="store", type="string",
+        help="<simpoint file,weight file,interval-length,warmup-length>")
+    parser.add_option("--restore-simpoint-checkpoint", action="store_true",
+        help="restore from a simpoint checkpoint taken with " +
+             "--take-simpoint-checkpoints")
 
     # Checkpointing options
     ###Note that performing checkpointing via python script files will override
@@ -210,6 +297,14 @@ def addCommonOptions(parser):
     parser.add_option("--at-instruction", action="store_true", default=False,
         help="""Treat value of --checkpoint-restore or --take-checkpoint as a
                 number of instructions.""")
+    parser.add_option("--spec-input", default="ref", type="choice",
+                      choices=["ref", "test", "train", "smred", "mdred",
+                               "lgred"],
+                      help="Input set size for SPEC CPU2000 benchmarks.")
+    parser.add_option("--arm-iset", default="arm", type="choice",
+                      choices=["arm", "thumb", "aarch64"],
+                      help="ARM instruction set.")
+
 
 def addSEOptions(parser):
     # Benchmark options
@@ -218,6 +313,8 @@ def addSEOptions(parser):
     parser.add_option("-o", "--options", default="",
                       help="""The options to pass to the binary, use " "
                               around the entire string""")
+    parser.add_option("-e", "--env", default="",
+                      help="Initialize workload environment from text file.")
     parser.add_option("-i", "--input", default="",
                       help="Read stdin from a file.")
     parser.add_option("--output", default="",
@@ -226,12 +323,17 @@ def addSEOptions(parser):
                       help="Redirect stderr to a file.")
 
 def addFSOptions(parser):
+    from FSConfig import os_types
+
     # Simulation options
     parser.add_option("--timesync", action="store_true",
             help="Prevent simulated time from getting ahead of real time")
 
     # System options
     parser.add_option("--kernel", action="store", type="string")
+    parser.add_option("--os-type", action="store", type="choice",
+            choices=os_types[buildEnv['TARGET_ISA']], default="linux",
+            help="Specifies type of OS to boot")
     parser.add_option("--script", action="store", type="string")
     parser.add_option("--frame-capture", action="store_true",
             help="Stores changed frame buffers from the VNC server to compressed "\
@@ -240,8 +342,12 @@ def addFSOptions(parser):
     if buildEnv['TARGET_ISA'] == "arm":
         parser.add_option("--bare-metal", action="store_true",
                    help="Provide the raw system without the linux specific bits")
+        parser.add_option("--list-machine-types",
+                          action="callback", callback=_listPlatformTypes,
+                      help="List available platform types")
         parser.add_option("--machine-type", action="store", type="choice",
-                choices=ArmMachineType.map.keys(), default="RealView_PBX")
+                choices=PlatformConfig.platform_names(),
+                default="VExpress_EMM")
         parser.add_option("--dtb-filename", action="store", type="string",
               help="Specifies device tree blob file to use with device-tree-"\
               "enabled kernels")
@@ -265,3 +371,13 @@ def addFSOptions(parser):
     # Disk Image Options
     parser.add_option("--disk-image", action="store", type="string", default=None,
                       help="Path to the disk image to use.")
+    parser.add_option("--root-device", action="store", type="string", default=None,
+                      help="OS device name for root partition")
+
+    # Command line options
+    parser.add_option("--command-line", action="store", type="string",
+                      default=None,
+                      help="Template for the kernel command line.")
+    parser.add_option("--command-line-file", action="store",
+                      default=None, type="string",
+                      help="File with a template for the kernel command line")

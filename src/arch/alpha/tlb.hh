@@ -39,11 +39,10 @@
 #include "arch/alpha/pagetable.hh"
 #include "arch/alpha/utility.hh"
 #include "arch/alpha/vtophys.hh"
+#include "arch/generic/tlb.hh"
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/AlphaTLB.hh"
-#include "sim/fault_fwd.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 
@@ -75,11 +74,10 @@ class TLB : public BaseTLB
     typedef std::multimap<Addr, int> PageTable;
     PageTable lookupTable;  // Quick lookup into page table
 
-    TlbEntry *table;        // the Page Table
-    int size;               // TLB Size
+    std::vector<TlbEntry> table; // the Page Table
     int nlu;                // not last used entry (for replacement)
 
-    void nextnlu() { if (++nlu >= size) nlu = 0; }
+    void nextnlu() { if (++nlu >= table.size()) nlu = 0; }
     TlbEntry *lookup(Addr vpn, uint8_t asn);
 
   public:
@@ -87,19 +85,21 @@ class TLB : public BaseTLB
     TLB(const Params *p);
     virtual ~TLB();
 
-    virtual void regStats();
+    void takeOverFrom(BaseTLB *otlb) override {}
 
-    int getsize() const { return size; }
+    void regStats() override;
+
+    int getsize() const { return table.size(); }
 
     TlbEntry &index(bool advance = true);
     void insert(Addr vaddr, TlbEntry &entry);
 
-    void flushAll();
+    void flushAll() override;
     void flushProcesses();
     void flushAddr(Addr addr, uint8_t asn);
 
     void
-    demapPage(Addr vaddr, uint64_t asn)
+    demapPage(Addr vaddr, uint64_t asn) override
     {
         assert(asn < (1 << 8));
         flushAddr(vaddr, asn);
@@ -117,8 +117,8 @@ class TLB : public BaseTLB
     static Fault checkCacheability(RequestPtr &req, bool itb = false);
 
     // Checkpointing
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     // Most recently used page table entries
     TlbEntry *EntryCache[3];

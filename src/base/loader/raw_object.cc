@@ -34,15 +34,15 @@
 #include "debug/Loader.hh"
 
 ObjectFile *
-RawObject::tryFile(const std::string &fname, int fd, size_t len, uint8_t *data)
+RawObject::tryFile(const std::string &fname, size_t len, uint8_t *data)
 {
-    return new RawObject(fname, fd, len, data, ObjectFile::UnknownArch,
+    return new RawObject(fname, len, data, ObjectFile::UnknownArch,
             ObjectFile::UnknownOpSys);
 }
 
-RawObject::RawObject(const std::string &_filename, int _fd, size_t _len,
+RawObject::RawObject(const std::string &_filename, size_t _len,
         uint8_t *_data, Arch _arch, OpSys _opSys)
-    : ObjectFile(_filename, _fd, _len, _data, _arch, _opSys)
+    : ObjectFile(_filename, _len, _data, _arch, _opSys)
 {
     text.baseAddr = 0;
     text.size = len;
@@ -62,21 +62,30 @@ RawObject::RawObject(const std::string &_filename, int _fd, size_t _len,
 }
 
 bool
-RawObject::loadGlobalSymbols(SymbolTable *symtab, Addr addrMask)
+RawObject::loadAllSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                          Addr addr_mask)
+{
+    return true;
+}
+
+bool
+RawObject::loadGlobalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                             Addr addr_mask)
 {
 /*    int fnameStart = filename.rfind('/',filename.size()) + 1;
     int extStart = filename.rfind('.',filename.size());
-    symtab->insert(text.baseAddr & addrMask, filename.substr(fnameStart,
+    symtab->insert(text.baseAddr & addr_mask, filename.substr(fnameStart,
                 extStart-fnameStart) + "_start");*/
     return true;
 }
 
 bool
-RawObject::loadLocalSymbols(SymbolTable *symtab, Addr addrMask)
+RawObject::loadLocalSymbols(SymbolTable *symtab, Addr base, Addr offset,
+                            Addr addr_mask)
 {
 /*    int fnameStart = filename.rfind('/',filename.size()) + 1;
     int extStart = filename.rfind('.',filename.size());
-    symtab->insert(text.baseAddr & addrMask, filename.substr(fnameStart,
+    symtab->insert(text.baseAddr & addr_mask, filename.substr(fnameStart,
                 extStart-fnameStart) + "_start");*/
     return true;
 }

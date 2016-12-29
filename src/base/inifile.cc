@@ -230,6 +230,17 @@ IniFile::find(const string &sectionName, const string &entryName,
 }
 
 bool
+IniFile::entryExists(const string &sectionName, const string &entryName) const
+{
+    Section *section = findSection(sectionName);
+
+    if (!section)
+        return false;
+    else
+        return section->findEntry(entryName);
+}
+
+bool
 IniFile::sectionExists(const string &sectionName) const
 {
     return findSection(sectionName) != NULL;
@@ -279,6 +290,16 @@ IniFile::Section::printUnreferenced(const string &sectionName)
     return unref;
 }
 
+
+void
+IniFile::getSectionNames(vector<string> &list) const
+{
+    for (SectionTable::const_iterator i = table.begin();
+         i != table.end(); ++i)
+    {
+        list.push_back((*i).first);
+    }
+}
 
 bool
 IniFile::printUnreferenced()

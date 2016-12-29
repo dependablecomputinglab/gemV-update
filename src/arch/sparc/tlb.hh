@@ -31,13 +31,12 @@
 #ifndef __ARCH_SPARC_TLB_HH__
 #define __ARCH_SPARC_TLB_HH__
 
+#include "arch/generic/tlb.hh"
 #include "arch/sparc/asi.hh"
 #include "arch/sparc/tlb_map.hh"
 #include "base/misc.hh"
 #include "mem/request.hh"
 #include "params/SparcTLB.hh"
-#include "sim/fault_fwd.hh"
-#include "sim/tlb.hh"
 
 class ThreadContext;
 class Packet;
@@ -116,7 +115,7 @@ class TLB : public BaseTLB
             bool update_used = true);
 
     /** Remove all entries from the TLB */
-    void flushAll();
+    void flushAll() override;
 
   protected:
     /** Insert a PTE into the TLB. */
@@ -154,8 +153,10 @@ class TLB : public BaseTLB
     typedef SparcTLBParams Params;
     TLB(const Params *p);
 
+    void takeOverFrom(BaseTLB *otlb) override {}
+
     void
-    demapPage(Addr vaddr, uint64_t asn)
+    demapPage(Addr vaddr, uint64_t asn) override
     {
         panic("demapPage(Addr) is not implemented.\n");
     }
@@ -175,8 +176,8 @@ class TLB : public BaseTLB
     void GetTsbPtr(ThreadContext *tc, Addr addr, int ctx, Addr *ptrs);
 
     // Checkpointing
-    virtual void serialize(std::ostream &os);
-    virtual void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 
     /** Give an entry id, read that tlb entries' tte */
     uint64_t TteRead(int entry);

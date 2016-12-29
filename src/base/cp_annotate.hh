@@ -1,4 +1,16 @@
 /*
+ * Copyright (c) 2014 ARM Limited
+ * All rights reserved.
+ *
+ * The license below extends only to copyright in the software and shall
+ * not be construed as granting a license to any other intellectual
+ * property including but not limited to intellectual property relating
+ * to a hardware implementation of the functionality of the software
+ * licensed hereunder.  You may use the software subject to the license
+ * terms below provided that you ensure that this notice is replicated
+ * unmodified and in its entirety in all distributions of the software,
+ * modified or unmodified, in source code or in binary form.
+ *
  * Copyright (c) 2006-2009 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -33,13 +45,15 @@
 
 #include <list>
 #include <map>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "base/loader/symtab.hh"
-#include "base/hashmap.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
+#include "debug/AnnotateQ.hh"
 #include "config/cp_annotate.hh"
 #include "config/the_isa.hh"
 #include "sim/serialize.hh"
@@ -87,33 +101,51 @@ class CPA
     void swIdentify(ThreadContext *tc)                            { return; }
     uint64_t swGetId(ThreadContext *tc)                         { return 0; }
     void swSyscallLink(ThreadContext *tc)                         { return; }
-    void hwBegin(flags f, System *sys, uint64_t frame, std::string sm, 
+    void hwBegin(flags f, System *sys, uint64_t frame, std::string sm,
                  std::string st)                                  { return; }
-    void hwQ(flags f, System *sys, uint64_t frame, std::string sm, 
-             std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwQ(flags f, System *sys, uint64_t frame, std::string sm,
+             std::string q, uint64_t qid, System *q_sys = NULL,
              int32_t count = 1)                                   { return; }
-    void hwDq(flags f, System *sys, uint64_t frame, std::string sm, 
-              std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwDq(flags f, System *sys, uint64_t frame, std::string sm,
+              std::string q, uint64_t qid, System *q_sys = NULL,
               int32_t count = 1)                                  { return; }
-    void hwPq(flags f, System *sys, uint64_t frame, std::string sm, 
-              std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwPq(flags f, System *sys, uint64_t frame, std::string sm,
+              std::string q, uint64_t qid, System *q_sys = NULL,
               int32_t count = 1)                                  { return; }
-    void hwRq(flags f, System *sys, uint64_t frame, std::string sm, 
-              std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwRq(flags f, System *sys, uint64_t frame, std::string sm,
+              std::string q, uint64_t qid, System *q_sys = NULL,
               int32_t count = 1)                                  { return; }
-    void hwWf(flags f, System *sys, uint64_t frame, std::string sm, 
-              std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwWf(flags f, System *sys, uint64_t frame, std::string sm,
+              std::string q, uint64_t qid, System *q_sys = NULL,
               int32_t count = 1)                                  { return; }
-    void hwWe(flags f, System *sys, uint64_t frame, std::string sm, 
-              std::string q, uint64_t qid, System *q_sys = NULL, 
+    void hwWe(flags f, System *sys, uint64_t frame, std::string sm,
+              std::string q, uint64_t qid, System *q_sys = NULL,
               int32_t count = 1)                                  { return; }
 };
 #else
+
+/**
+ * Provide a hash function for the CPI Id type
+ */
+namespace std {
+template <>
+struct hash<std::pair<std::string, uint64_t> >
+{
+
+    size_t
+    operator()(const std::pair<std::string, uint64_t>& x) const
+    {
+        return hash<std::string>()(x.first);
+    }
+
+};
+}
+
 class CPA : SimObject
 {
   public:
     typedef CPAParams Params;
-    
+
     /** The known operations that are written to the annotation output file. */
     enum ops {
         OP_BEGIN           = 0x01,
@@ -139,7 +171,7 @@ class CPA : SimObject
         /* Queue like a stack, not a queue */
         FL_QOPP     = 0x04,
         /* Mark HW state as waiting for some non-resource constraint
-         * (e.g. wait because SM only starts after 10 items are queued) */ 
+         * (e.g. wait because SM only starts after 10 items are queued) */
         FL_WAIT     = 0x08,
         /* operation is linking to another state machine */
         FL_LINK     = 0x10,
@@ -158,7 +190,7 @@ class CPA : SimObject
         }
 
     /* struct that is written to the annotation output file */
-    struct AnnotateData : public RefCounted {
+    struct AnnotateData : public Serializable {
 
         Tick time;
         uint32_t data;
@@ -170,12 +202,11 @@ class CPA : SimObject
         uint8_t  cpu;
         bool dump;
 
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
-
+        void serialize(CheckpointOut &cp) const override;
+        void unserialize(CheckpointIn &cp) override;
     };
 
-    typedef RefCountingPtr<AnnotateData> AnnDataPtr;
+    typedef std::shared_ptr<AnnotateData> AnnDataPtr;
 
     /* header for the annotation file */
     struct AnnotateHeader {
@@ -191,9 +222,9 @@ class CPA : SimObject
 
     std::vector<uint64_t> annotateIdx;
 
-    // number of state machines encountered in the simulation 
+    // number of state machines encountered in the simulation
     int numSm;
-    // number of states encountered in the simulation 
+    // number of states encountered in the simulation
     int numSmt;
     // number of states/queues for a given state machine/system respectively
     std::vector<int> numSt, numQ;
@@ -205,12 +236,12 @@ class CPA : SimObject
     uint64_t conId;
 
     // Convert state strings into state ids
-    typedef m5::hash_map<std::string, int> SCache;
+    typedef std::unordered_map<std::string, int> SCache;
     typedef std::vector<SCache> StCache;
 
     // Convert sm and queue name,id into queue id
     typedef std::pair<std::string, uint64_t> Id;
-    typedef m5::hash_map<Id, int> IdHCache;
+    typedef std::unordered_map<Id, int> IdHCache;
     typedef std::vector<IdHCache> IdCache;
 
     // Hold mapping of sm and queues to output python
@@ -235,7 +266,7 @@ class CPA : SimObject
     typedef std::map<int, int> LinkMap;
 
     // SC Links
-    typedef m5::hash_map<Id, AnnDataPtr> ScHCache;
+    typedef std::unordered_map<Id, AnnDataPtr> ScHCache;
     typedef std::vector<ScHCache> ScCache;
 
 
@@ -260,7 +291,7 @@ class CPA : SimObject
     NameCache nameCache;
     // Stack of state machines currently nested (should unwind correctly)
     SmStack smStack;
-    // Map of currently outstanding links 
+    // Map of currently outstanding links
     LinkMap lnMap;
     // If the state machine is currently exculding automatic changes
     SwExpl swExpl;
@@ -268,7 +299,7 @@ class CPA : SimObject
     IMap lastState;
     // Hold mapping of sm and queues to output python
     IdMap smMap, qMap;
-    // Items still in queue, used for sanity checking 
+    // Items still in queue, used for sanity checking
     std::vector<AnnotateList> qData;
 
     void doDq(System *sys, int flags, int cpu, int sm, std::string q, int qi,
@@ -280,7 +311,7 @@ class CPA : SimObject
 
     // Turn a system id, state machine string, state machine id into a small int
     // for annotation output
-    int 
+    int
     getSm(int sysi, std::string si, uint64_t id)
     {
         int smi;
@@ -290,14 +321,14 @@ class CPA : SimObject
         if (smi == 0) {
             smCache[sysi-1][smid] = smi = ++numSm;
             assert(smi < 65535);
-            smMap.push_back(std::make_pair<int, Id>(sysi, smid));
+            smMap.push_back(std::make_pair(sysi, smid));
         }
         return smi;
     }
 
     // Turn a state machine string, state string into a small int
     // for annotation output
-    int 
+    int
     getSt(std::string sm, std::string s)
     {
         int sti, smi;
@@ -320,12 +351,12 @@ class CPA : SimObject
     }
 
     // Turn state machine pointer into a smal int for annotation output
-    int 
+    int
     getSys(System *s)
     {
         NameCache::iterator i = nameCache.find(s);
         if (i == nameCache.end()) {
-            nameCache[s] = std::make_pair<std::string,int>(s->name(), ++numSys);
+            nameCache[s] = std::make_pair(s->name(), ++numSys);
             i = nameCache.find(s);
             // might need to put smstackid into map here, but perhaps not
             //smStack.push_back(std::vector<int>());
@@ -338,9 +369,9 @@ class CPA : SimObject
         return i->second.second;
     }
 
-    // Turn queue name, and queue context into small int for 
+    // Turn queue name, and queue context into small int for
     // annotation output
-    int 
+    int
     getQ(int sys, std::string q, uint64_t id)
     {
         int qi;
@@ -354,12 +385,12 @@ class CPA : SimObject
             qBytes.push_back(0);
             qData.push_back(AnnotateList());
             numQ[sys-1]++;
-            qMap.push_back(std::make_pair<int, Id>(sys, qid));
+            qMap.push_back(std::make_pair(sys, qid));
         }
         return qi;
     }
 
-    void swBegin(System *sys, int cpuid, std::string st, uint64_t frame, 
+    void swBegin(System *sys, int cpuid, std::string st, uint64_t frame,
             bool expl = false, int flags = FL_NONE);
 
     AnnDataPtr add(int t, int f, int c, int sm, int stq, int32_t data=0);
@@ -368,7 +399,7 @@ class CPA : SimObject
 
     bool _enabled;
 
-    /** Only allow one CPA object in a system. It doesn't make sense to have 
+    /** Only allow one CPA object in a system. It doesn't make sense to have
      * more that one per simulation because if a part of the system was
      * important it would have annotations and queues, and with more than one
      * object none of the sanity checking for queues will work. */
@@ -398,7 +429,7 @@ class CPA : SimObject
     uint64_t swGetId(ThreadContext *tc);
     void swSyscallLink(ThreadContext *tc);
 
-    inline void hwBegin(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwBegin(flags f, System *sys, uint64_t frame, std::string sm,
             std::string st)
     {
         if (!enabled())
@@ -411,7 +442,7 @@ class CPA : SimObject
             warn("BAD state encountered: at cycle %d: %s\n", curTick(), st);
     }
 
-    inline void hwQ(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwQ(flags f, System *sys, uint64_t frame, std::string sm,
             std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
@@ -419,14 +450,14 @@ class CPA : SimObject
 
         int sysi = getSys(sys);
         int qi = getQ(q_sys ?  getSys(q_sys) : sysi, q, qid);
-        DPRINTFS(AnnotateQ, sys, 
+        DPRINTFS(AnnotateQ, sys,
                 "hwQ: %s[%#x] cur size %d %d bytes: %d adding: %d\n",
                 q, qid, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
         doQ(sys, FL_HW | f, 0, getSm(sysi, sm, frame), q, qi, count);
 
     }
 
-    inline void hwDq(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwDq(flags f, System *sys, uint64_t frame, std::string sm,
             std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
@@ -434,13 +465,13 @@ class CPA : SimObject
 
         int sysi = getSys(sys);
         int qi = getQ(q_sys ?  getSys(q_sys) : sysi, q, qid);
-        DPRINTFS(AnnotateQ, sys, 
+        DPRINTFS(AnnotateQ, sys,
                 "hwDQ: %s[%#x] cur size %d %d bytes: %d removing: %d\n",
                 q, qid, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
         doDq(sys, FL_HW | f, 0, getSm(sysi,sm, frame), q, qi, count);
     }
 
-    inline void hwPq(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwPq(flags f, System *sys, uint64_t frame, std::string sm,
             std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
@@ -448,13 +479,13 @@ class CPA : SimObject
 
         int sysi = getSys(sys);
         int qi = getQ(q_sys ?  getSys(q_sys) : sysi, q, qid);
-        DPRINTFS(AnnotateQ, sys, 
+        DPRINTFS(AnnotateQ, sys,
                 "hwPQ: %s[%#x] cur size %d %d bytes: %d peeking: %d\n",
                 q, qid, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
         add(OP_PEEK, FL_HW | f, 0, getSm(sysi, sm, frame), qi, count);
     }
 
-    inline void hwRq(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwRq(flags f, System *sys, uint64_t frame, std::string sm,
             std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
@@ -462,13 +493,13 @@ class CPA : SimObject
 
         int sysi = getSys(sys);
         int qi = getQ(q_sys ?  getSys(q_sys) : sysi, q, qid);
-        DPRINTFS(AnnotateQ, sys, 
+        DPRINTFS(AnnotateQ, sys,
                 "hwRQ: %s[%#x] cur size %d %d bytes: %d reserving: %d\n",
                 q, qid, qSize[qi-1], qData[qi-1].size(), qBytes[qi-1], count);
         add(OP_RESERVE, FL_HW | f, 0, getSm(sysi, sm, frame), qi, count);
     }
 
-    inline void hwWf(flags f, System *sys, uint64_t frame, std::string sm, 
+    inline void hwWf(flags f, System *sys, uint64_t frame, std::string sm,
             std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
@@ -479,8 +510,8 @@ class CPA : SimObject
         add(OP_WAIT_FULL, FL_HW | f, 0, getSm(sysi, sm, frame), qi, count);
     }
 
-    inline void hwWe(flags f, System *sys, uint64_t frame, std::string sm, 
-            std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1) 
+    inline void hwWe(flags f, System *sys, uint64_t frame, std::string sm,
+            std::string q, uint64_t qid, System *q_sys = NULL, int32_t count = 1)
     {
         if (!enabled())
             return;
@@ -494,28 +525,23 @@ class CPA : SimObject
     CPA(Params *p);
     void startup();
 
-    // This code is ISA specific and will need to be changed
-    // if the annotation code is used for something other than Alpha
-    inline uint64_t getFrame(ThreadContext *tc)
-        { return (tc->readMiscRegNoEffect(TheISA::IPR_PALtemp23) & 
-                ~ULL(0x3FFF)); }
+    uint64_t getFrame(ThreadContext *tc);
 
     static bool available()  { return true; }
 
-    bool 
-    enabled() 
-    {   
+    bool
+    enabled()
+    {
         if (!this)
             return false;
         return _enabled;
     }
-        
+
     void dump(bool all);
     void dumpKey();
 
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
-
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 #endif // !CP_ANNOTATE
 

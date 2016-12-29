@@ -74,7 +74,7 @@ class LockedAddr {
     Addr addr;
 
     // locking hw context
-    const int contextId;
+    const ContextID contextId;
 
     static Addr mask(Addr paddr) { return (paddr & ~Addr_Mask); }
 
@@ -111,10 +111,13 @@ class AbstractMemory : public MemObject
     uint8_t* pmemAddr;
 
     // Enable specific memories to be reported to the configuration table
-    bool confTableReported;
+    const bool confTableReported;
 
     // Should the memory appear in the global address map
-    bool inAddrMap;
+    const bool inAddrMap;
+
+    // Should KVM map this memory for the guest
+    const bool kvmMap;
 
     std::list<LockedAddr> lockedAddrList;
 
@@ -193,6 +196,11 @@ class AbstractMemory : public MemObject
 
     AbstractMemory(const Params* p);
     virtual ~AbstractMemory() {}
+
+    /**
+     * Initialise this memory.
+     */
+    void init() override;
 
     /**
      * See if this is a null memory that should never store data and
@@ -278,6 +286,14 @@ class AbstractMemory : public MemObject
     bool isInAddrMap() const { return inAddrMap; }
 
     /**
+     * When shadow memories are in use, KVM may want to make one or the other,
+     * but cannot map both into the guest address space.
+     *
+     * @return if this memory should be mapped into the KVM guest address space
+     */
+    bool isKvmMap() const { return kvmMap; }
+
+    /**
      * Perform an untimed memory access and update all the state
      * (e.g. locked addresses) and statistics accordingly. The packet
      * is turned into a response if required.
@@ -299,7 +315,7 @@ class AbstractMemory : public MemObject
     /**
      * Register Statistics
      */
-    virtual void regStats();
+    void regStats() override;
 
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012 ARM Limited
+ * Copyright (c) 2011-2012, 2014 ARM Limited
  * Copyright (c) 2010 The University of Edinburgh
  * All rights reserved
  *
@@ -47,15 +47,17 @@
 #ifndef __CPU_PRED_BPRED_UNIT_HH__
 #define __CPU_PRED_BPRED_UNIT_HH__
 
-#include <list>
+#include <deque>
 
 #include "base/statistics.hh"
 #include "base/types.hh"
 #include "cpu/pred/btb.hh"
+#include "cpu/pred/indirect.hh"
 #include "cpu/pred/ras.hh"
 #include "cpu/inst_seq.hh"
 #include "cpu/static_inst.hh"
 #include "params/BranchPredictor.hh"
+#include "sim/probe/pmu.hh"
 #include "sim/sim_object.hh"
 
 /**
@@ -74,7 +76,9 @@ class BPredUnit : public SimObject
     /**
      * Registers statistics.
      */
-    void regStats();
+    void regStats() override;
+
+    void regProbePoints() override;
 
     /** Perform sanity checks after a drain. */
     void drainSanityCheck() const;
@@ -87,14 +91,11 @@ class BPredUnit : public SimObject
      * @param tid The thread id.
      * @return Returns if the branch is taken or not.
      */
-    bool predict(StaticInstPtr &inst, const InstSeqNum &seqNum,
+    bool predict(const StaticInstPtr &inst, const InstSeqNum &seqNum,
                  TheISA::PCState &pc, ThreadID tid);
-    bool predictInOrder(StaticInstPtr &inst, const InstSeqNum &seqNum,
-                        int asid, TheISA::PCState &instPC, TheISA::PCState &predPC,
-                        ThreadID tid);
 
     // @todo: Rename this function.
-    virtual void uncondBranch(void * &bp_history) = 0;
+    virtual void uncondBranch(ThreadID tid, Addr pc, void * &bp_history) = 0;
 
     /**
      * Tells the branch predictor to commit any updates until the given
@@ -129,7 +130,7 @@ class BPredUnit : public SimObject
      * @param bp_history Pointer to the history object.  The predictor
      * will need to update any state and delete the object.
      */
-    virtual void squash(void *bp_history) = 0;
+    virtual void squash(ThreadID tid, void *bp_history) = 0;
 
     /**
      * Looks up a given PC in the BP to see if it is taken or not taken.
@@ -138,7 +139,7 @@ class BPredUnit : public SimObject
      * has the branch predictor state associated with the lookup.
      * @return Whether the branch is taken or not taken.
      */
-    virtual bool lookup(Addr instPC, void * &bp_history) = 0;
+    virtual bool lookup(ThreadID tid, Addr instPC, void * &bp_history) = 0;
 
      /**
      * If a branch is not taken, because the BTB address is invalid or missing,
@@ -148,7 +149,7 @@ class BPredUnit : public SimObject
      * @param bp_history Pointer that will be set to an object that
      * has the branch predictor state associated with the lookup.
      */
-    virtual void btbUpdate(Addr instPC, void * &bp_history) = 0;
+    virtual void btbUpdate(ThreadID tid, Addr instPC, void * &bp_history) = 0;
 
     /**
      * Looks up a given PC in the BTB to see if a matching entry exists.
@@ -176,8 +177,15 @@ class BPredUnit : public SimObject
      * squash operation.
      * @todo Make this update flexible enough to handle a global predictor.
      */
-    virtual void update(Addr instPC, bool taken, void *bp_history,
-                        bool squashed) = 0;
+    virtual void update(ThreadID tid, Addr instPC, bool taken,
+                        void *bp_history, bool squashed) = 0;
+     /**
+     * Deletes the associated history with a branch, performs no predictor
+     * updates.  Used for branches that mispredict and update tables but
+     * are still speculative and later retire.
+     * @param bp_history History to delete associated with this predictor
+     */
+    virtual void retireSquashed(ThreadID tid, void *bp_history) = 0;
 
     /**
      * Updates the BTB with the target of a branch.
@@ -186,6 +194,9 @@ class BPredUnit : public SimObject
      */
     void BTBUpdate(Addr instPC, const TheISA::PCState &target)
     { BTB.update(instPC, target, 0); }
+
+
+    virtual unsigned getGHR(ThreadID tid, void* bp_history) const { return 0; }
 
     void dump();
 
@@ -200,7 +211,7 @@ class BPredUnit : public SimObject
                          ThreadID _tid)
             : seqNum(seq_num), pc(instPC), bpHistory(bp_history), RASTarget(0),
               RASIndex(0), tid(_tid), predTaken(pred_taken), usedRAS(0), pushedRAS(0),
-              wasCall(0), wasReturn(0)
+              wasCall(0), wasReturn(0), wasSquashed(0), wasIndirect(0)
         {}
 
         bool operator==(const PredictorHistory &entry) const {
@@ -234,7 +245,7 @@ class BPredUnit : public SimObject
         /** Whether or not the RAS was used. */
         bool usedRAS;
 
-        /* Wether or not the RAS was pushed */
+        /* Whether or not the RAS was pushed */
         bool pushedRAS;
 
         /** Whether or not the instruction was a call. */
@@ -242,26 +253,38 @@ class BPredUnit : public SimObject
 
         /** Whether or not the instruction was a return. */
         bool wasReturn;
+
+        /** Whether this instruction has already mispredicted/updated bp */
+        bool wasSquashed;
+
+        /** Wether this instruction was an indirect branch */
+        bool wasIndirect;
     };
 
-    typedef std::list<PredictorHistory> History;
-    typedef History::iterator HistoryIt;
+    typedef std::deque<PredictorHistory> History;
 
     /** Number of the threads for which the branch history is maintained. */
-    uint32_t numThreads;
+    const unsigned numThreads;
+
 
     /**
      * The per-thread predictor history. This is used to update the predictor
      * as instructions are committed, or restore it to the proper state after
      * a squash.
      */
-    History *predHist;
+    std::vector<History> predHist;
 
     /** The BTB. */
     DefaultBTB BTB;
 
     /** The per-thread return address stack. */
-    ReturnAddrStack *RAS;
+    std::vector<ReturnAddrStack> RAS;
+
+    /** Option to disable indirect predictor. */
+    const bool useIndirect;
+
+    /** The indirect target predictor. */
+    IndirectPredictor iPred;
 
     /** Stat for number of BP lookups. */
     Stats::Scalar lookups;
@@ -281,6 +304,46 @@ class BPredUnit : public SimObject
     Stats::Scalar usedRAS;
     /** Stat for number of times the RAS is incorrect. */
     Stats::Scalar RASIncorrect;
+
+    /** Stat for the number of indirect target lookups.*/
+    Stats::Scalar indirectLookups;
+    /** Stat for the number of indirect target hits.*/
+    Stats::Scalar indirectHits;
+    /** Stat for the number of indirect target misses.*/
+    Stats::Scalar indirectMisses;
+    /** Stat for the number of indirect target mispredictions.*/
+    Stats::Scalar indirectMispredicted;
+
+  protected:
+    /** Number of bits to shift instructions by for predictor addresses. */
+    const unsigned instShiftAmt;
+
+    /**
+     * @{
+     * @name PMU Probe points.
+     */
+
+    /**
+     * Helper method to instantiate probe points belonging to this
+     * object.
+     *
+     * @param name Name of the probe point.
+     * @return A unique_ptr to the new probe point.
+     */
+    ProbePoints::PMUUPtr pmuProbePoint(const char *name);
+
+
+    /**
+     * Branches seen by the branch predictor
+     *
+     * @note This counter includes speculative branches.
+     */
+    ProbePoints::PMUUPtr ppBranches;
+
+    /** Miss-predicted branches */
+    ProbePoints::PMUUPtr ppMisses;
+
+    /** @} */
 };
 
 #endif // __CPU_PRED_BPRED_UNIT_HH__

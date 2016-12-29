@@ -28,10 +28,14 @@
 
 import m5
 from m5.objects import *
-m5.util.addToPath('../configs/common')
-import FSConfig
+m5.util.addToPath('../configs/')
+from common import FSConfig
 
-system = FSConfig.makeSparcSystem('atomic')
+try:
+    system = FSConfig.makeSparcSystem('atomic')
+except IOError as e:
+    skip_test(reason=str(e))
+
 system.voltage_domain = VoltageDomain()
 system.clk_domain = SrcClockDomain(clock = '1GHz',
                                    voltage_domain = system.voltage_domain)

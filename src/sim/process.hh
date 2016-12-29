@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2014 Advanced Micro Devices, Inc.
  * Copyright (c) 2001-2005 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -32,6 +33,7 @@
 #ifndef __PROCESS_HH__
 #define __PROCESS_HH__
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -40,6 +42,7 @@
 #include "base/types.hh"
 #include "config/the_isa.hh"
 #include "mem/se_translating_port_proxy.hh"
+#include "sim/fd_entry.hh"
 #include "sim/sim_object.hh"
 #include "sim/syscallreturn.hh"
 
@@ -49,6 +52,7 @@ struct LiveProcessParams;
 class SyscallDesc;
 class System;
 class ThreadContext;
+class EmulatedDriver;
 
 template<class IntType>
 struct AuxVector
@@ -71,7 +75,7 @@ class Process : public SimObject
     System *system;
 
     // thread contexts associated with this process
-    std::vector<int> contextIds;
+    std::vector<ContextID> contextIds;
 
     // number of CPUs (esxec contexts, really) assigned to this process.
     unsigned int numCpus() { return contextIds.size(); }
@@ -103,8 +107,12 @@ class Process : public SimObject
     Addr next_thread_stack_base;
 
     // Base of region for mmaps (when user doesn't specify an address).
-    Addr mmap_start;
     Addr mmap_end;
+
+    // Does mmap region grow upward or downward from mmap_end?  Most
+    // platforms grow downward, but a few (such as Alpha) grow upward
+    // instead, so they can override thie method to return false.
+    virtual bool mmapGrowsDown() const { return true; }
 
     // Base of region for nxm data
     Addr nxm_start;
@@ -116,7 +124,9 @@ class Process : public SimObject
     // constructor
     Process(ProcessParams *params);
 
-    virtual void initState();
+    void initState() override;
+
+    DrainState drain() override;
 
   public:
 
@@ -124,49 +134,37 @@ class Process : public SimObject
     //separated.
     uint64_t M5_pid;
 
-    PageTable* pTable;
+    // flag for using architecture specific page table
+    bool useArchPT;
+    // running KvmCPU in SE mode requires special initialization
+    bool kvmInSE;
 
-    class FdMap
-    {
-      public:
-        int fd;
-        std::string filename;
-        int mode;
-        int flags;
-        bool isPipe;
-        int readPipeSource;
-        uint64_t fileOffset;
-
-        FdMap()
-            : fd(-1), filename("NULL"), mode(0), flags(0),
-              isPipe(false), readPipeSource(0), fileOffset(0)
-        { }
-
-        void serialize(std::ostream &os);
-        void unserialize(Checkpoint *cp, const std::string &section);
-    };
+    PageTableBase* pTable;
 
   protected:
     /// Memory proxy for initialization (image loading)
     SETranslatingPortProxy initVirtMem;
 
   private:
-    // file descriptor remapping support
-    static const int MAX_FD = 256;    // max legal fd value
-    FdMap fd_map[MAX_FD+1];
+    static const int NUM_FDS = 1024;
 
+    // File descriptor remapping support.
+    std::shared_ptr<std::array<FDEntry, NUM_FDS>> fd_array;
+
+    // Standard file descriptor options for initialization and checkpoints.
+    std::map<std::string, int> imap;
+    std::map<std::string, int> oemap;
 
   public:
-    // static helper functions to generate file descriptors for constructor
-    static int openInputFile(const std::string &filename);
-    static int openOutputFile(const std::string &filename);
+    // inherit file descriptor map from another process (necessary for clone)
+    void inheritFDArray(Process *p);
 
     // override of virtual SimObject method: register statistics
-    virtual void regStats();
+    void regStats() override;
 
     // After getting registered with system object, tell process which
     // system-wide context id it is assigned.
-    void assignThreadContext(int context_id)
+    void assignThreadContext(ContextID context_id)
     {
         contextIds.push_back(context_id);
     }
@@ -177,27 +175,31 @@ class Process : public SimObject
     // provide program name for debug messages
     virtual const char *progName() const { return "<unknown>"; }
 
-    // map simulator fd sim_fd to target fd tgt_fd
-    void dup_fd(int sim_fd, int tgt_fd);
-
     // generate new target fd for sim_fd
-    int alloc_fd(int sim_fd, std::string filename, int flags, int mode,
-                 bool pipe);
+    int allocFD(int sim_fd, const std::string& filename, int flags, int mode,
+                bool pipe);
 
-    // free target fd (e.g., after close)
-    void free_fd(int tgt_fd);
+    // disassociate target fd with simulator fd and cleanup subsidiary fields
+    void resetFDEntry(int tgt_fd);
 
     // look up simulator fd for given target fd
-    int sim_fd(int tgt_fd);
+    int getSimFD(int tgt_fd);
 
-    // look up simulator fd_map object for a given target fd
-    FdMap *sim_fd_obj(int tgt_fd);
+    // look up fd entry for a given target fd
+    FDEntry *getFDEntry(int tgt_fd);
+
+    // look up target fd for given host fd
+    // Assumes a 1:1 mapping between target file descriptor and host file
+    // descriptor. Given the current API, this must be true given that it's
+    // not possible to map multiple target file descriptors to the same host
+    // file descriptor
+    int getTgtFD(int sim_fd);
 
     // fix all offsets for currently open files and save them
-    void fix_file_offsets();
+    void fixFileOffsets();
 
     // find all offsets for currently open files and save them
-    void find_file_offsets();
+    void findFileOffsets();
 
     // set the source of this read pipe for a checkpoint resume
     void setReadPipeSource(int read_pipe_fd, int source_fd);
@@ -211,22 +213,22 @@ class Process : public SimObject
     bool fixupStackFault(Addr vaddr);
 
     /**
-     * Map a contiguous range of virtual addresses in this process's
+     * Maps a contiguous range of virtual addresses in this process's
      * address space to a contiguous range of physical addresses.
-     * This function exists primarily to enable exposing the map
-     * operation to python, so that configuration scripts can set up
-     * mappings in SE mode.
+     * This function exists primarily to expose the map operation to
+     * python, so that configuration scripts can set up mappings in SE mode.
      *
      * @param vaddr The starting virtual address of the range.
      * @param paddr The starting physical address of the range.
      * @param size The length of the range in bytes.
+     * @param cacheable Specifies whether accesses are cacheable.
      * @return True if the map operation was successful.  (At this
      *           point in time, the map operation always succeeds.)
      */
-    bool map(Addr vaddr, Addr paddr, int size);
+    bool map(Addr vaddr, Addr paddr, int size, bool cacheable = true);
 
-    void serialize(std::ostream &os);
-    void unserialize(Checkpoint *cp, const std::string &section);
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
 };
 
 //
@@ -240,6 +242,7 @@ class LiveProcess : public Process
     std::vector<std::string> argv;
     std::vector<std::string> envp;
     std::string cwd;
+    std::string executable;
 
     LiveProcess(LiveProcessParams *params, ObjectFile *objFile);
 
@@ -252,6 +255,9 @@ class LiveProcess : public Process
     // pid of the process and it's parent
     uint64_t __pid;
     uint64_t __ppid;
+
+    // Emulated drivers available to this process
+    std::vector<EmulatedDriver *> drivers;
 
   public:
 
@@ -293,7 +299,7 @@ class LiveProcess : public Process
     inline uint64_t ppid() {return __ppid;}
 
     // provide program name for debug messages
-    virtual const char *progName() const { return argv[0].c_str(); }
+    virtual const char *progName() const { return executable.c_str(); }
 
     std::string
     fullPath(const std::string &filename)
@@ -321,6 +327,24 @@ class LiveProcess : public Process
             SyscallReturn return_value) = 0;
 
     virtual SyscallDesc *getDesc(int callnum) = 0;
+
+    /**
+     * Find an emulated device driver.
+     *
+     * @param filename Name of the device (under /dev)
+     * @return Pointer to driver object if found, else NULL
+     */
+    EmulatedDriver *findDriver(std::string filename);
+
+    // This function acts as a callback to update the bias value in
+    // the object file because the parameters needed to calculate the
+    // bias are not available when the object file is created.
+    void updateBias();
+
+    ObjectFile *getInterpreter();
+
+    Addr getBias();
+    Addr getStartPC();
 
     // this function is used to create the LiveProcess object, since
     // we can't tell which subclass of LiveProcess to use until we

@@ -493,7 +493,7 @@ template <class Impl>
 void
 ROB<Impl>::squash(InstSeqNum squash_num, ThreadID tid)
 {
-    if (isEmpty()) {
+    if (isEmpty(tid)) {
         DPRINTF(ROB, "Does not need to squash due to being empty "
                 "[sn:%i]\n",
                 squash_num);
@@ -526,7 +526,7 @@ ROB<Impl>::readHeadInst(ThreadID tid)
     if (threadEntries[tid] != 0) {
         InstIt head_thread = instList[tid].begin();
 
-        assert((*head_thread)->isInROB()==true);
+        assert((*head_thread)->isInROB());
 
         return *head_thread;
     } else {

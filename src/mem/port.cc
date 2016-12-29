@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012,2015 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -72,7 +72,7 @@ BaseMasterPort::~BaseMasterPort()
 BaseSlavePort&
 BaseMasterPort::getSlavePort() const
 {
-    if(_baseSlavePort == NULL)
+    if (_baseSlavePort == NULL)
         panic("Cannot getSlavePort on master port %s that is not connected\n",
               name());
 
@@ -98,7 +98,7 @@ BaseSlavePort::~BaseSlavePort()
 BaseMasterPort&
 BaseSlavePort::getMasterPort() const
 {
-    if(_baseMasterPort == NULL)
+    if (_baseMasterPort == NULL)
         panic("Cannot getMasterPort on slave port %s that is not connected\n",
               name());
 
@@ -190,9 +190,9 @@ MasterPort::sendTimingSnoopResp(PacketPtr pkt)
 }
 
 void
-MasterPort::sendRetry()
+MasterPort::sendRetryResp()
 {
-    _slavePort->recvRetry();
+    _slavePort->recvRespRetry();
 }
 
 void
@@ -261,7 +261,13 @@ SlavePort::sendTimingSnoopReq(PacketPtr pkt)
 }
 
 void
-SlavePort::sendRetry()
+SlavePort::sendRetryReq()
 {
-    _masterPort->recvRetry();
+    _masterPort->recvReqRetry();
+}
+
+void
+SlavePort::sendRetrySnoopResp()
+{
+    _masterPort->recvRetrySnoopResp();
 }

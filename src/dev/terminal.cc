@@ -34,7 +34,16 @@
  */
 
 #include <sys/ioctl.h>
+
+#if defined(__FreeBSD__)
+#include <termios.h>
+
+#else
 #include <sys/termios.h>
+
+#endif
+#include "dev/terminal.hh"
+
 #include <poll.h>
 #include <unistd.h>
 
@@ -53,7 +62,6 @@
 #include "debug/Terminal.hh"
 #include "debug/TerminalVerbose.hh"
 #include "dev/platform.hh"
-#include "dev/terminal.hh"
 #include "dev/uart.hh"
 
 using namespace std;
@@ -84,6 +92,11 @@ Terminal::DataEvent::DataEvent(Terminal *t, int fd, int e)
 void
 Terminal::DataEvent::process(int revent)
 {
+    // As a consequence of being called from the PollQueue, we might
+    // have been called from a different thread. Migrate to "our"
+    // thread.
+    EventQueue::ScopedMigration migrate(term->eventQueue());
+
     if (revent & POLLIN)
         term->data();
     else if (revent & POLLNVAL)
@@ -94,19 +107,15 @@ Terminal::DataEvent::process(int revent)
  * Terminal code
  */
 Terminal::Terminal(const Params *p)
-    : SimObject(p), listenEvent(NULL), dataEvent(NULL), number(p->number),
-      data_fd(-1), txbuf(16384), rxbuf(16384), outfile(NULL)
+    : SimObject(p), termDataAvail(NULL), listenEvent(NULL), dataEvent(NULL),
+      number(p->number), data_fd(-1), txbuf(16384), rxbuf(16384),
+      outfile(p->output ? simout.findOrCreate(p->name) : NULL)
 #if TRACING_ON == 1
       , linebuf(16384)
 #endif
 {
-    if (p->output) {
-        outfile = simout.find(p->name);
-        if (!outfile)
-            outfile = simout.create(p->name);
-
-        outfile->setf(ios::unitbuf);
-    }
+    if (outfile)
+        outfile->stream()->setf(ios::unitbuf);
 
     if (p->port)
         listen(p->port);
@@ -122,6 +131,17 @@ Terminal::~Terminal()
 
     if (dataEvent)
         delete dataEvent;
+}
+
+void
+Terminal::regDataAvailCallback(Callback *c)
+{
+    // This can happen if the user has connected multiple UARTs to the
+    // same terminal. In that case, each of them tries to register
+    // callbacks.
+    if (termDataAvail)
+        fatal("Terminal already has already been associated with a UART.\n");
+    termDataAvail = c;
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -181,8 +201,12 @@ Terminal::accept()
     write((const uint8_t *)stream.str().c_str(), stream.str().size());
 
     DPRINTFN("attach terminal %d\n", number);
-
-    txbuf.readall(data_fd);
+    char buf[1024];
+    for (size_t i = 0; i < txbuf.size(); i += sizeof(buf)) {
+        const size_t chunk_len(std::min(txbuf.size() - i, sizeof(buf)));
+        txbuf.peek(buf, i, chunk_len);
+        write((const uint8_t *)buf, chunk_len);
+    }
 }
 
 void
@@ -210,7 +234,8 @@ Terminal::data()
     if (len) {
         rxbuf.write((char *)buf, len);
         // Inform the UART there is data available
-        uart->dataAvailable();
+        assert(termDataAvail);
+        termDataAvail->process();
     }
 }
 
@@ -220,7 +245,7 @@ Terminal::read(uint8_t *buf, size_t len)
     if (data_fd < 0)
         panic("Terminal not properly attached.\n");
 
-    size_t ret;
+    ssize_t ret;
     do {
       ret = ::read(data_fd, buf, len);
     } while (ret == -1 && errno == EINTR);
@@ -304,7 +329,7 @@ Terminal::out(char c)
                 DPRINTF(Terminal, "%s\n", buffer);
                 delete [] buffer;
             } else {
-                linebuf.write(c);
+                linebuf.write(&c, 1);
             }
         }
 
@@ -312,13 +337,13 @@ Terminal::out(char c)
     }
 #endif
 
-    txbuf.write(c);
+    txbuf.write(&c, 1);
 
     if (data_fd >= 0)
         write(c);
 
     if (outfile)
-        outfile->write(&c, 1);
+        outfile->stream()->write(&c, 1);
 
     DPRINTF(TerminalVerbose, "out: \'%c\' %#02x\n",
             isprint(c) ? c : ' ', (int)c);

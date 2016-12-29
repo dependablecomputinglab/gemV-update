@@ -43,7 +43,6 @@
 #include "dev/mips/malta.hh"
 #include "dev/mips/malta_cchip.hh"
 #include "dev/mips/malta_io.hh"
-#include "dev/mips/malta_pchip.hh"
 #include "dev/terminal.hh"
 #include "params/Malta.hh"
 #include "sim/system.hh"
@@ -91,13 +90,13 @@ Malta::pciToDma(Addr pciAddr) const
 }
 
 void
-Malta::serialize(std::ostream &os)
+Malta::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_ARRAY(intr_sum_type, Malta::Max_CPUs);
 }
 
 void
-Malta::unserialize(Checkpoint *cp, const std::string &section)
+Malta::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_ARRAY(intr_sum_type, Malta::Max_CPUs);
 }

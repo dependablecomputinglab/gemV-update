@@ -49,6 +49,8 @@
  * Authors: Gabe Black
  */
 
+#include <memory>
+
 #include "arch/x86/regs/apic.hh"
 #include "arch/x86/interrupts.hh"
 #include "arch/x86/intmessage.hh"
@@ -110,58 +112,34 @@ decodeAddr(Addr paddr)
         regNum = APIC_SPURIOUS_INTERRUPT_VECTOR;
         break;
       case 0x100:
-      case 0x108:
       case 0x110:
-      case 0x118:
       case 0x120:
-      case 0x128:
       case 0x130:
-      case 0x138:
       case 0x140:
-      case 0x148:
       case 0x150:
-      case 0x158:
       case 0x160:
-      case 0x168:
       case 0x170:
-      case 0x178:
-        regNum = APIC_IN_SERVICE((paddr - 0x100) / 0x8);
+        regNum = APIC_IN_SERVICE((paddr - 0x100) / 0x10);
         break;
       case 0x180:
-      case 0x188:
       case 0x190:
-      case 0x198:
       case 0x1A0:
-      case 0x1A8:
       case 0x1B0:
-      case 0x1B8:
       case 0x1C0:
-      case 0x1C8:
       case 0x1D0:
-      case 0x1D8:
       case 0x1E0:
-      case 0x1E8:
       case 0x1F0:
-      case 0x1F8:
-        regNum = APIC_TRIGGER_MODE((paddr - 0x180) / 0x8);
+        regNum = APIC_TRIGGER_MODE((paddr - 0x180) / 0x10);
         break;
       case 0x200:
-      case 0x208:
       case 0x210:
-      case 0x218:
       case 0x220:
-      case 0x228:
       case 0x230:
-      case 0x238:
       case 0x240:
-      case 0x248:
       case 0x250:
-      case 0x258:
       case 0x260:
-      case 0x268:
       case 0x270:
-      case 0x278:
-        regNum = APIC_INTERRUPT_REQUEST((paddr - 0x200) / 0x8);
+        regNum = APIC_INTERRUPT_REQUEST((paddr - 0x200) / 0x10);
         break;
       case 0x280:
         regNum = APIC_ERROR_STATUS;
@@ -288,7 +266,7 @@ X86ISA::Interrupts::requestInterrupt(uint8_t vector,
         }
     }
     if (FullSystem)
-        cpu->wakeup();
+        cpu->wakeup(0);
 }
 
 
@@ -489,8 +467,6 @@ X86ISA::Interrupts::setReg(ApicRegIndex reg, uint32_t val)
             }
             low = val;
             InterruptCommandRegHigh high = regs[APIC_INTERRUPT_COMMAND_HIGH];
-            // Record that an IPI is being sent.
-            low.deliveryStatus = 1;
             TriggerIntMessage message = 0;
             message.destination = high.destination;
             message.vector = low.vector;
@@ -498,9 +474,6 @@ X86ISA::Interrupts::setReg(ApicRegIndex reg, uint32_t val)
             message.destMode = low.destMode;
             message.level = low.level;
             message.trigger = low.trigger;
-            bool timing(sys->isTimingMode());
-            // Be careful no updates of the delivery status bit get lost.
-            regs[APIC_INTERRUPT_COMMAND_LOW] = low;
             ApicList apics;
             int numContexts = sys->numContexts();
             switch (low.destShorthand) {
@@ -556,8 +529,13 @@ X86ISA::Interrupts::setReg(ApicRegIndex reg, uint32_t val)
                 }
                 break;
             }
-            pendingIPIs += apics.size();
-            intMasterPort.sendMessage(apics, message, timing);
+            // Record that an IPI is being sent if one actually is.
+            if (apics.size()) {
+                low.deliveryStatus = 1;
+                pendingIPIs += apics.size();
+            }
+            regs[APIC_INTERRUPT_COMMAND_LOW] = low;
+            intMasterPort.sendMessage(apics, message, sys->isTimingMode());
             newVal = regs[APIC_INTERRUPT_COMMAND_LOW];
         }
         break;
@@ -666,16 +644,16 @@ X86ISA::Interrupts::getInterrupt(ThreadContext *tc)
     if (pendingUnmaskableInt) {
         if (pendingSmi) {
             DPRINTF(LocalApic, "Generated SMI fault object.\n");
-            return new SystemManagementInterrupt();
+            return std::make_shared<SystemManagementInterrupt>();
         } else if (pendingNmi) {
             DPRINTF(LocalApic, "Generated NMI fault object.\n");
-            return new NonMaskableInterrupt(nmiVector);
+            return std::make_shared<NonMaskableInterrupt>(nmiVector);
         } else if (pendingInit) {
             DPRINTF(LocalApic, "Generated INIT fault object.\n");
-            return new InitInterrupt(initVector);
+            return std::make_shared<InitInterrupt>(initVector);
         } else if (pendingStartup) {
             DPRINTF(LocalApic, "Generating SIPI fault object.\n");
-            return new StartupInterrupt(startupVector);
+            return std::make_shared<StartupInterrupt>(startupVector);
         } else {
             panic("pendingUnmaskableInt set, but no unmaskable "
                     "ints were pending.\n");
@@ -683,11 +661,11 @@ X86ISA::Interrupts::getInterrupt(ThreadContext *tc)
         }
     } else if (pendingExtInt) {
         DPRINTF(LocalApic, "Generated external interrupt fault object.\n");
-        return new ExternalInterrupt(extIntVector);
+        return std::make_shared<ExternalInterrupt>(extIntVector);
     } else {
         DPRINTF(LocalApic, "Generated regular interrupt fault object.\n");
         // The only thing left are fixed and lowest priority interrupts.
-        return new ExternalInterrupt(IRRV);
+        return std::make_shared<ExternalInterrupt>(IRRV);
     }
 }
 
@@ -727,7 +705,7 @@ X86ISA::Interrupts::updateIntrInfo(ThreadContext *tc)
 }
 
 void
-X86ISA::Interrupts::serialize(std::ostream &os)
+X86ISA::Interrupts::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_ARRAY(regs, NUM_APIC_REGS);
     SERIALIZE_SCALAR(pendingSmi);
@@ -752,7 +730,7 @@ X86ISA::Interrupts::serialize(std::ostream &os)
 }
 
 void
-X86ISA::Interrupts::unserialize(Checkpoint *cp, const std::string &section)
+X86ISA::Interrupts::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_ARRAY(regs, NUM_APIC_REGS);
     UNSERIALIZE_SCALAR(pendingSmi);
