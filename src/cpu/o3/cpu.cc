@@ -1711,7 +1711,7 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
                         pipeVulT.vulOnSquash(P_LSQ, (*removeList.front())->seqNum);
                     
                 } else {
-
+                    /* //HwiSoo
                     if(pipeVulEnable) {
                         pipeVulT.vulOnCommit(P_FETCHQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
                         pipeVulT.vulOnCommit(P_DECODEQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
@@ -1719,15 +1719,19 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
                         pipeVulT.vulOnCommit(P_I2EQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
                         pipeVulT.vulOnCommit(P_IEWQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
                     } 
+                    */
                     if(renameVulEnable) {
                         renameVulT.vulOnCommit((*removeList.front())->seqNum,
                                     (*removeList.front())->threadNumber);
                     }
+                    
+                    /* //HwiSoo
                     if(iqVulEnable) {
                         pipeVulT.vulOnCommit(P_IQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
                     }
                     if(lsqVulEnable)
                         pipeVulT.vulOnCommit(P_LSQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
+                    */
                 }
         }
 

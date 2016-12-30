@@ -99,6 +99,40 @@ template <class Impl>BaseO3DynInst<Impl>::~BaseO3DynInst()
         }
     }
 #endif
+
+    if(this->isSquashed())
+    {
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnSquash(P_FETCHQ, this->seqNum);
+            this->cpu->pipeVulT.vulOnSquash(P_DECODEQ, this->seqNum);
+            this->cpu->pipeVulT.vulOnSquash(P_RENAMEQ, this->seqNum);
+            this->cpu->pipeVulT.vulOnSquash(P_I2EQ, this->seqNum);
+            this->cpu->pipeVulT.vulOnSquash(P_IEWQ, this->seqNum);
+        } 
+        
+        if(this->cpu->iqVulEnable)
+            this->cpu->pipeVulT.vulOnSquash(P_IQ, this->seqNum);
+        if(this->cpu->lsqVulEnable)
+            this->cpu->pipeVulT.vulOnSquash(P_LSQ, this->seqNum);        
+    }       
+    else
+    {
+        if(this->cpu->pipeVulEnable) {
+            this->cpu->pipeVulT.vulOnCommit(P_FETCHQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+            this->cpu->pipeVulT.vulOnCommit(P_DECODEQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+            this->cpu->pipeVulT.vulOnCommit(P_RENAMEQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+            this->cpu->pipeVulT.vulOnCommit(P_I2EQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+            this->cpu->pipeVulT.vulOnCommit(P_IEWQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+        } 
+        
+        if(this->cpu->iqVulEnable) {
+            this->cpu->pipeVulT.vulOnCommit(P_IQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+        }
+        if(this->cpu->lsqVulEnable)
+            this->cpu->pipeVulT.vulOnCommit(P_LSQ, this->seqNum, this->numSrcRegs(), this->numDestRegs());
+      
+    }
+
 };
 
 
