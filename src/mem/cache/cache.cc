@@ -1506,9 +1506,9 @@ Cache::recvTimingResp(PacketPtr pkt)
         if(enableVulAnal) {                                                 //VUL_MSHR
             //long vul = mshrQueue.mshrVulCalc.vulOnDeallocate(mshrQueue.allocated);      //VUL_MSHR
             //if(mshrQueue.index == MSHRQueue_MSHRs)
-            //mshrVul += vul;
+               // mshrVul += vul;
             //else
-            //    wbVul += vul;
+               // wbVul += vul;
         }
 
         

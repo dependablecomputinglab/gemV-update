@@ -961,7 +961,6 @@ DefaultRename<Impl>::doSquash(const InstSeqNum &squashed_seq_num, ThreadID tid)
             renameMap[tid]->setEntry(hb_it->archReg, hb_it->prevPhysReg);
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
-                //HwiSoo
                 int arch_reg_index=hb_it->archReg;
                 if(arch_reg_index >= TheISA::FP_Reg_Base && arch_reg_index < TheISA::CC_Reg_Base)
                 {
@@ -1157,7 +1156,6 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)flat_rel_dest_reg, inst->seqNum, tid);
-                //this->cpu->renameVulT.vulOnWrite((int)flat_rel_dest_reg, inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)flat_rel_dest_reg, inst->seqNum, tid);
             }
 
@@ -1172,8 +1170,6 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
                             , inst->seqNum, tid);
-                //this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
-                //            , inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
                             , inst->seqNum, tid);
             }
@@ -1188,7 +1184,6 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
-                //this->cpu->renameVulT.vulOnWrite((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid); //HwiSoo
                 this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
             }
 

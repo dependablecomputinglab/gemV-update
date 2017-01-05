@@ -1685,54 +1685,13 @@ FullO3CPU<Impl>::cleanUpRemovedInsts()
         if((*removeList.front())->isSquashed() || !(*removeList.front())->isCommitted()) {
             if(rfVulEnable)
                 regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
-            //if(renameVulEnable) //HwiSoo
-            //    renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
-            //                        (*removeList.front())->threadNumber);
-
-
-        } else if((*removeList.front())->isCommitted()) {
-
-                if((*removeList.front())->isSquashed()) {
-                    if(pipeVulEnable) {
-                        pipeVulT.vulOnSquash(P_FETCHQ, (*removeList.front())->seqNum);
-                        pipeVulT.vulOnSquash(P_DECODEQ, (*removeList.front())->seqNum);
-                        pipeVulT.vulOnSquash(P_RENAMEQ, (*removeList.front())->seqNum);
-                        pipeVulT.vulOnSquash(P_I2EQ, (*removeList.front())->seqNum);
-                        pipeVulT.vulOnSquash(P_IEWQ, (*removeList.front())->seqNum);
-                    } 
-                    if(rfVulEnable)
-                        regVulCalc.clearSquashedAccess((*removeList.front())->seqNum);
-                    //if(renameVulEnable) //HwiSoo
-                    //    renameVulT.vulOnCommitHB((*removeList.front())->seqNum,
-                    //                (*removeList.front())->threadNumber);
-                    if(iqVulEnable)
-                        pipeVulT.vulOnSquash(P_IQ, (*removeList.front())->seqNum);
-                    if(lsqVulEnable)
-                        pipeVulT.vulOnSquash(P_LSQ, (*removeList.front())->seqNum);
+        } 
+        else {
+            if(renameVulEnable) {
+                renameVulT.vulOnCommit((*removeList.front())->seqNum,
+                            (*removeList.front())->threadNumber);
+            }
                     
-                } else {
-                    /* //HwiSoo
-                    if(pipeVulEnable) {
-                        pipeVulT.vulOnCommit(P_FETCHQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                        pipeVulT.vulOnCommit(P_DECODEQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                        pipeVulT.vulOnCommit(P_RENAMEQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                        pipeVulT.vulOnCommit(P_I2EQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                        pipeVulT.vulOnCommit(P_IEWQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                    } 
-                    */
-                    if(renameVulEnable) {
-                        renameVulT.vulOnCommit((*removeList.front())->seqNum,
-                                    (*removeList.front())->threadNumber);
-                    }
-                    
-                    /* //HwiSoo
-                    if(iqVulEnable) {
-                        pipeVulT.vulOnCommit(P_IQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                    }
-                    if(lsqVulEnable)
-                        pipeVulT.vulOnCommit(P_LSQ, (*removeList.front())->seqNum, (*removeList.front())->numSrcRegs(), (*removeList.front())->numDestRegs());
-                    */
-                }
         }
 
         instList.erase(removeList.front());
