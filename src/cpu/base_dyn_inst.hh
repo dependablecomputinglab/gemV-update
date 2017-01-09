@@ -189,7 +189,7 @@ class BaseDynInst : public ExecContext, public RefCounted
     /** VUL_TRACKER */
     VulTracker vulT;
 
-
+    const static int FlagWidth = MaxFlags; //HwiSoo, for VulTracker
   protected:
     /** The result of the instruction; assumes an instruction can have many
      *  destination registers.

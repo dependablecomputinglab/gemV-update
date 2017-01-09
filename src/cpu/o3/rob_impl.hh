@@ -59,7 +59,7 @@ ROB<Impl>::ROB(O3CPU *_cpu, DerivO3CPUParams *params)
       numEntries(params->numROBEntries),
       squashWidth(params->squashWidth),
       numInstsInROB(0),
-      robVulCalc(params->numROBEntries, params->numThreads),                //VUL_ROB
+      robVulCalc(params->numROBEntries, params->numThreads, sizeof(InstSeqNum)),                //VUL_ROB
       numThreads(params->numThreads)
 {
     std::string policy = params->smtROBPolicy;

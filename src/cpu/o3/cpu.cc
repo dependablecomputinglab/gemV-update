@@ -66,7 +66,7 @@
 #include "sim/stat_control.hh"
 #include "sim/system.hh"
 
-#include "debug/VulTracker.hh"      //VUL_TRACKER
+//#include "debug/VulTracker.hh"      //VUL_TRACKER
 
 #if THE_ISA == ALPHA_ISA
 #include "arch/alpha/osfpal.hh"
@@ -201,7 +201,8 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
       system(params->system),
       lastRunningCycle(curCycle()),
       regVulCalc(regFile.totalNumPhysRegs(), params->fi_reg, TheISA::ZeroReg, params->numPhysIntRegs+params->numPhysFloatRegs+CCREG_ZERO),           //VUL_RF
-      renameVulT(TheISA::NumIntRegs + TheISA::NumFloatRegs + TheISA::NumCCRegs, numThreads),                   //VUL_TRACKER
+      pipeVulT(sizeof(RegIndex), sizeof(PhysRegIndex), sizeof(InstSeqNum), BaseDynInst<O3CPUImpl>::FlagWidth),
+      renameVulT(TheISA::NumIntRegs + TheISA::NumFloatRegs + TheISA::NumCCRegs, numThreads, sizeof(RegIndex), sizeof(PhysRegIndex), sizeof(InstSeqNum)),                   //VUL_TRACKER
       enableVulAnalysis(params->vul_analysis),                                //VUL_TRACKER
       robVulEnable(params->rob_vul_enable),                                   //VUL_TRACKER
       rfVulEnable(params->rf_vul_enable),                                   //VUL_TRACKER
