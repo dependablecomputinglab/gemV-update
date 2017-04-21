@@ -47,10 +47,6 @@ class BaseKvmCPU(BaseCPU):
     abstract = True
 
     @classmethod
-    def export_method_cxx_predecls(cls, code):
-        code('#include "cpu/kvm/base.hh"')
-
-    @classmethod
     def export_methods(cls, code):
         code('''
       void dump() const;
@@ -68,7 +64,6 @@ class BaseKvmCPU(BaseCPU):
     def support_take_over(cls):
         return True
 
-    kvmVM = Param.KvmVM(Parent.any, 'KVM VM (i.e., shared memory domain)')
     useCoalescedMMIO = Param.Bool(False, "Use coalesced MMIO (EXPERIMENTAL)")
     usePerfOverflow = Param.Bool(False, "Use perf event overflow counters (EXPERIMENTAL)")
     alwaysSyncTC = Param.Bool(False,

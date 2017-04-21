@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2013, 2015-2016 ARM Limited
+ * Copyright (c) 2010, 2013, 2015-2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -58,7 +58,7 @@
 #include "dev/platform.hh"
 #include "params/Pl390.hh"
 
-class Pl390 : public BaseGic
+class Pl390 : public BaseGic, public BaseGicRegisters
 {
   protected:
     // distributor memory addresses
@@ -88,7 +88,7 @@ class Pl390 : public BaseGic
         GICC_BPR   = 0x08, // binary point register
         GICC_IAR   = 0x0C, // interrupt ack register
         GICC_EOIR  = 0x10, // end of interrupt
-        GICC_RPR   = 0x14, // runing priority
+        GICC_RPR   = 0x14, // running priority
         GICC_HPPIR = 0x18, // highest pending interrupt
         GICC_ABPR  = 0x1c, // aliased binary point
         GICC_IIDR  = 0xfc, // cpu interface id register
@@ -111,6 +111,10 @@ class Pl390 : public BaseGic
     static const int INT_LINES_MAX = 1020;
     static const int GLOBAL_INT_LINES = INT_LINES_MAX - SGI_MAX - PPI_MAX;
 
+    /** minimum value for Binary Point Register ("IMPLEMENTATION DEFINED");
+        chosen for consistency with Linux's in-kernel KVM GIC model */
+    static const int GICC_BPR_MINIMUM = 2;
+
     BitUnion32(SWI)
         Bitfield<3,0> sgi_id;
         Bitfield<23,16> cpu_list;
@@ -122,22 +126,26 @@ class Pl390 : public BaseGic
         Bitfield<12,10> cpu_id;
     EndBitUnion(IAR)
 
-    /** Distributor address GIC listens at */
-    Addr distAddr;
+  protected: /* Params */
+    /** Address range for the distributor interface */
+    const AddrRange distRange;
 
-    /** CPU address GIC listens at */
-    /** @todo is this one per cpu? */
-    Addr cpuAddr;
+    /** Address range for the CPU interfaces */
+    const AddrRange cpuRange;
+
+    /** All address ranges used by this GIC */
+    const AddrRangeList addrRanges;
 
     /** Latency for a distributor operation */
-    Tick distPioDelay;
+    const Tick distPioDelay;
 
     /** Latency for a cpu operation */
-    Tick cpuPioDelay;
+    const Tick cpuPioDelay;
 
     /** Latency for a interrupt to get to CPU */
-    Tick intLatency;
+    const Tick intLatency;
 
+  protected:
     /** Gic enabled */
     bool enabled;
 
@@ -168,16 +176,11 @@ class Pl390 : public BaseGic
          * interrupt priority for SGIs and PPIs */
         uint8_t intPriority[SGI_MAX + PPI_MAX];
 
-        /** GICD_ITARGETSR{0..7}
-         * 8b CPU target ID for each SGI and PPI */
-        uint8_t cpuTarget[SGI_MAX + PPI_MAX];
-
         void serialize(CheckpointOut &cp) const override;
         void unserialize(CheckpointIn &cp) override;
 
         BankedRegs() :
-            intEnabled(0), pendingInt(0), activeInt(0),
-            intPriority {0}, cpuTarget {0}
+            intEnabled(0), pendingInt(0), activeInt(0), intPriority {0}
           {}
     };
     std::vector<BankedRegs*> bankedRegs;
@@ -248,12 +251,23 @@ class Pl390 : public BaseGic
      */
     uint8_t cpuTarget[GLOBAL_INT_LINES];
 
-    uint8_t& getCpuTarget(ContextID ctx, uint32_t ix) {
+    uint8_t getCpuTarget(ContextID ctx, uint32_t ix) {
+        assert(ctx < sys->numRunningContexts());
         assert(ix < INT_LINES_MAX);
         if (ix < SGI_MAX + PPI_MAX) {
-            return getBankedRegs(ctx).cpuTarget[ix];
+            // "GICD_ITARGETSR0 to GICD_ITARGETSR7 are read-only, and each
+            // field returns a value that corresponds only to the processor
+            // reading the register."
+            uint32_t ctx_mask;
+            if (gem5ExtensionsEnabled) {
+                ctx_mask = ctx;
+            } else {
+            // convert the CPU id number into a bit mask
+                ctx_mask = power(2, ctx);
+            }
+            return ctx_mask;
         } else {
-            return cpuTarget[ix - (SGI_MAX + PPI_MAX)];
+            return cpuTarget[ix - 32];
         }
     }
 
@@ -266,6 +280,7 @@ class Pl390 : public BaseGic
 
     /** CPU priority */
     uint8_t cpuPriority[CPU_MAX];
+    uint8_t getCpuPriority(unsigned cpu); // BPR-adjusted priority value
 
     /** Binary point registers */
     uint8_t cpuBpr[CPU_MAX];
@@ -314,25 +329,32 @@ class Pl390 : public BaseGic
     int intNumToWord(int num) const { return num >> 5; }
     int intNumToBit(int num) const { return num % 32; }
 
-    /** Post an interrupt to a CPU
+    /**
+     * Post an interrupt to a CPU with a delay
      */
     void postInt(uint32_t cpu, Tick when);
+
+    /**
+     * Deliver a delayed interrupt to the target CPU
+     */
+    void postDelayedInt(uint32_t cpu);
 
     /** Event definition to post interrupt to CPU after a delay
     */
     class PostIntEvent : public Event
     {
       private:
+        Pl390 &parent;
         uint32_t cpu;
-        Platform *platform;
       public:
-        PostIntEvent( uint32_t c, Platform* p)
-            : cpu(c), platform(p)
+        PostIntEvent(Pl390 &_parent, uint32_t _cpu)
+            : parent(_parent), cpu(_cpu)
         { }
-        void process() { platform->intrctrl->post(cpu, ArmISA::INT_IRQ, 0);}
+        void process() { parent.postDelayedInt(cpu); }
         const char *description() const { return "Post Interrupt to CPU"; }
     };
     PostIntEvent *postIntEvent[CPU_MAX];
+    int pendingDelayedInterrupts;
 
   public:
     typedef Pl390Params Params;
@@ -343,11 +365,13 @@ class Pl390 : public BaseGic
     }
     Pl390(const Params *p);
 
-    /** @{ */
-    /** Return the address ranges used by the Gic
-     * This is the distributor address + all cpu addresses
-     */
-    AddrRangeList getAddrRanges() const override;
+    DrainState drain() override;
+
+    void serialize(CheckpointOut &cp) const override;
+    void unserialize(CheckpointIn &cp) override;
+
+  public: /* PioDevice */
+    AddrRangeList getAddrRanges() const override { return addrRanges; }
 
     /** A PIO read to the device, immediately split up into
      * readDistributor() or readCpu()
@@ -358,27 +382,15 @@ class Pl390 : public BaseGic
      * writeDistributor() or writeCpu()
      */
     Tick write(PacketPtr pkt) override;
-    /** @} */
 
-    /** @{ */
-    /** Post an interrupt from a device that is connected to the Gic.
-     * Depending on the configuration, the gic will pass this interrupt
-     * on through to a CPU.
-     * @param number number of interrupt to send */
+  public: /* BaseGic */
     void sendInt(uint32_t number) override;
-
-    /** Interface call for private peripheral interrupts  */
-    void sendPPInt(uint32_t num, uint32_t cpu) override;
-
-    /** Clear an interrupt from a device that is connected to the Gic
-     * Depending on the configuration, the gic may de-assert it's cpu line
-     * @param number number of interrupt to send */
     void clearInt(uint32_t number) override;
 
-    /** Clear a (level-sensitive) PPI */
+    void sendPPInt(uint32_t num, uint32_t cpu) override;
     void clearPPInt(uint32_t num, uint32_t cpu) override;
-    /** @} */
 
+  public: // Test & debug intefaces
     /** @{ */
     /* Various functions fer testing and debugging */
     void driveSPI(uint32_t spi);
@@ -387,29 +399,39 @@ class Pl390 : public BaseGic
     void driveIrqEn(bool state);
     /** @} */
 
-    void serialize(CheckpointOut &cp) const override;
-    void unserialize(CheckpointIn &cp) override;
-
   protected:
-    /** Handle a read to the distributor poriton of the GIC
+    /** Handle a read to the distributor portion of the GIC
      * @param pkt packet to respond to
      */
     Tick readDistributor(PacketPtr pkt);
+    uint32_t readDistributor(ContextID ctx, Addr daddr,
+                             size_t resp_sz);
+    uint32_t readDistributor(ContextID ctx, Addr daddr) override {
+        return readDistributor(ctx, daddr, 4);
+    }
 
-    /** Handle a read to the cpu poriton of the GIC
+    /** Handle a read to the cpu portion of the GIC
      * @param pkt packet to respond to
      */
     Tick readCpu(PacketPtr pkt);
+    uint32_t readCpu(ContextID ctx, Addr daddr) override;
 
-    /** Handle a write to the distributor poriton of the GIC
+    /** Handle a write to the distributor portion of the GIC
      * @param pkt packet to respond to
      */
     Tick writeDistributor(PacketPtr pkt);
+    void writeDistributor(ContextID ctx, Addr daddr,
+                          uint32_t data, size_t data_sz);
+    void writeDistributor(ContextID ctx, Addr daddr,
+                                  uint32_t data) override {
+        return writeDistributor(ctx, daddr, data, 4);
+    }
 
-    /** Handle a write to the cpu poriton of the GIC
+    /** Handle a write to the cpu portion of the GIC
      * @param pkt packet to respond to
      */
     Tick writeCpu(PacketPtr pkt);
+    void writeCpu(ContextID ctx, Addr daddr, uint32_t data) override;
 };
 
 #endif //__DEV_ARM_GIC_H__

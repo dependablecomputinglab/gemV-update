@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # Copyright (c) 2016 ARM Limited
 # All rights reserved
@@ -174,6 +174,11 @@ def _run_tests_args(subparsers):
     _add_format_args(parser)
 
 def _run_tests(args):
+    if not os.path.isfile(args.gem5) or not os.access(args.gem5, os.X_OK):
+        print >> sys.stderr, \
+            "gem5 binary '%s' not an executable file" % args.gem5
+        sys.exit(2)
+
     formatter = _create_formatter(args)
 
     out_base = os.path.abspath(args.directory)
@@ -237,8 +242,18 @@ def _show_args(subparsers):
                         help="Pickled test results")
 
 def _show(args):
+    def _load(f):
+        # Load the pickled status file, sometimes e.g., when a
+        # regression is still running the status file might be
+        # incomplete.
+        try:
+            return pickle.load(f)
+        except EOFError:
+            print >> sys.stderr, 'Could not read file %s' % f.name
+            return []
+
     formatter = _create_formatter(args)
-    suites = sum([ pickle.load(f) for f in args.result ], [])
+    suites = sum([ _load(f) for f in args.result ], [])
     formatter.dump_suites(suites)
 
 def _test_args(subparsers):
@@ -271,7 +286,11 @@ def _test_args(subparsers):
                         help="Pickled test results")
 
 def _test(args):
-    suites = sum([ pickle.load(f) for f in args.result ], [])
+    try:
+        suites = sum([ pickle.load(f) for f in args.result ], [])
+    except EOFError:
+        print >> sys.stderr, 'Could not read all files'
+        sys.exit(2)
 
     if all(s for s in suites):
         sys.exit(0)

@@ -498,8 +498,7 @@ class MetaSimObject(type):
         # suppresses inheritance by substituting in the base (null)
         # versions of these methods unless a different version is
         # explicitly supplied.
-        for method_name in ('export_methods', 'export_method_cxx_predecls',
-                            'export_method_swig_predecls'):
+        for method_name in ('export_methods', 'export_method_swig_predecls'):
             if method_name not in cls.__dict__:
                 base_method = getattr(MetaSimObject, method_name)
                 m = MethodType(base_method, cls, MetaSimObject)
@@ -657,19 +656,11 @@ class MetaSimObject(type):
 
     # See ParamValue.swig_predecls for description.
     def swig_predecls(cls, code):
-        code('%import "python/m5/internal/param_$cls.i"')
+        code('%import "python/_m5/param_$cls.i"')
 
     # Hook for exporting additional C++ methods to Python via SWIG.
     # Default is none, override using @classmethod in class definition.
     def export_methods(cls, code):
-        pass
-
-    # Generate the code needed as a prerequisite for the C++ methods
-    # exported via export_methods() to be compiled in the _wrap.cc
-    # file.  Typically generates one or more #include statements.  If
-    # any methods are exported, typically at least the C++ header
-    # declaring the relevant SimObject class must be included.
-    def export_method_cxx_predecls(cls, code):
         pass
 
     # Generate the code needed as a prerequisite for the C++ methods
@@ -695,7 +686,7 @@ class MetaSimObject(type):
         params = map(lambda (k, v): v, sorted(cls._params.local.items()))
         ports = cls._ports.local
 
-        code('%module(package="m5.internal") param_$cls')
+        code('%module(package="_m5") param_$cls')
         code()
         code('%{')
         code('#include "sim/sim_object.hh"')
@@ -703,7 +694,6 @@ class MetaSimObject(type):
         for param in params:
             param.cxx_predecls(code)
         code('#include "${{cls.cxx_header}}"')
-        cls.export_method_cxx_predecls(code)
         code('''\
 /**
   * This is a workaround for bug in swig. Prior to gcc 4.6.1 the STL
@@ -726,7 +716,7 @@ using std::ptrdiff_t;
 
         code()
         if cls._base:
-            code('%import "python/m5/internal/param_${{cls._base}}.i"')
+            code('%import "python/_m5/param_${{cls._base}}.i"')
         code()
 
         for ns in namespaces:

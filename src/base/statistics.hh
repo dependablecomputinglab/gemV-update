@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2003-2005 The Regents of The University of Michigan
+ * Copyright (c) 2017, Centre National de la Recherche Scientifique
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,6 +27,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Authors: Nathan Binkert
+ *          Pierre-Yves Peneau
  */
 
 /** @file
@@ -1359,7 +1361,7 @@ struct DistParams : public StorageParams
 };
 
 /**
- * Templatized storage and interface for a distrbution stat.
+ * Templatized storage and interface for a distribution stat.
  */
 class DistStor
 {
@@ -1894,7 +1896,7 @@ class DistBase : public DataWrap<Derived, DistInfoProxy>
     }
 
     /**
-     *  Add the argument distribution to the this distibution.
+     *  Add the argument distribution to the this distribution.
      */
     void add(DistBase &d) { data()->add(d.data()); }
 

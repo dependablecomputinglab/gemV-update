@@ -34,6 +34,7 @@ import imp
 import marshal
 import os
 import re
+import subprocess
 import sys
 import zlib
 
@@ -483,7 +484,7 @@ class DictImporter(object):
         if fullname == 'm5.objects':
             return self
 
-        if fullname.startswith('m5.internal'):
+        if fullname.startswith('_m5'):
             return None
 
         source = self.modules.get(fullname, None)
@@ -588,14 +589,14 @@ def makeDefinesPyFile(target, source, env):
 
     code = code_formatter()
     code("""
-import m5.internal
+import _m5.core
 import m5.util
 
 buildEnv = m5.util.SmartDict($build_env)
 
-compileDate = m5.internal.core.compileDate
+compileDate = _m5.core.compileDate
 _globals = globals()
-for key,val in m5.internal.core.__dict__.iteritems():
+for key,val in _m5.core.__dict__.iteritems():
     if key.startswith('flag_'):
         flag = key[5:]
         _globals[flag] = val
@@ -773,13 +774,13 @@ if GetOption('with_cxx_config'):
 # Generate any needed param SWIG wrapper files
 params_i_files = []
 for name,param in sorted(params_to_swig.iteritems()):
-    i_file = File('python/m5/internal/%s.i' % (param.swig_module_name()))
+    i_file = File('python/_m5/%s.i' % (param.swig_module_name()))
     params_i_files.append(i_file)
     env.Command(i_file, Value(name),
                 MakeAction(createParamSwigWrapper, Transform("SW PARAM")))
     env.Depends(i_file, depends)
     env.Depends(SWIG, i_file)
-    SwigSource('m5.internal', i_file)
+    SwigSource('_m5', i_file)
 
 # Generate all enum header files
 for name,enum in sorted(all_enums.iteritems()):
@@ -799,22 +800,22 @@ for name,enum in sorted(all_enums.iteritems()):
     env.Depends(hh_file, depends + extra_deps)
     env.Depends(SWIG, hh_file)
 
-    i_file = File('python/m5/internal/enum_%s.i' % name)
+    i_file = File('python/_m5/enum_%s.i' % name)
     env.Command(i_file, Value(name),
                 MakeAction(createEnumSwigWrapper, Transform("ENUMSWIG")))
     env.Depends(i_file, depends + extra_deps)
     env.Depends(SWIG, i_file)
-    SwigSource('m5.internal', i_file)
+    SwigSource('_m5', i_file)
 
 # Generate SimObject SWIG wrapper files
 for name,simobj in sorted(sim_objects.iteritems()):
     py_source = PySource.modules[simobj.__module__]
     extra_deps = [ py_source.tnode ]
-    i_file = File('python/m5/internal/param_%s.i' % name)
+    i_file = File('python/_m5/param_%s.i' % name)
     env.Command(i_file, Value(name),
                 MakeAction(createSimObjectSwigWrapper, Transform("SO SWIG")))
     env.Depends(i_file, depends + extra_deps)
-    SwigSource('m5.internal', i_file)
+    SwigSource('_m5', i_file)
 
 # Generate the main swig init file
 def makeEmbeddedSwigInit(package):
@@ -1194,7 +1195,18 @@ def makeEnv(env, label, objsfx, strip = False, **kwargs):
     if strip:
         progname += '.unstripped'
 
-    targets = new_env.Program(progname, main_objs + static_objs)
+    # When linking the gem5 binary, the command line can be too big for the
+    # shell to handle. Use "subprocess" to spawn processes without passing
+    # through the shell to avoid this problem. That means we also can't use
+    # shell syntax in any of the commands this will run, but that isn't
+    # currently an issue.
+    def spawn_with_subprocess(sh, escape, cmd, args, env):
+        return subprocess.call(args, env=env)
+
+    # Since we're not running through a shell, no escaping is necessary either.
+    targets = new_env.Program(progname, main_objs + static_objs,
+                              SPAWN=spawn_with_subprocess,
+                              ESCAPE=lambda x: x)
 
     if strip:
         if sys.platform == 'sunos5':

@@ -305,13 +305,21 @@ namespace X86ISA
         PCState() {}
         PCState(Addr val) { set(val); }
 
+        void
+        setNPC(Addr val)
+        {
+            Base::setNPC(val);
+            _size = 0;
+        }
+
         uint8_t size() const { return _size; }
         void size(uint8_t newSize) { _size = newSize; }
 
         bool
         branching() const
         {
-            return this->npc() != this->pc() + size();
+            return (this->npc() != this->pc() + size()) ||
+                   (this->nupc() != this->upc() + 1);
         }
 
         void

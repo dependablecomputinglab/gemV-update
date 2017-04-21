@@ -48,20 +48,22 @@
 #define __SYSTEM_HH__
 
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "arch/isa_traits.hh"
 #include "base/loader/symtab.hh"
-#include "base/misc.hh"
 #include "base/statistics.hh"
 #include "config/the_isa.hh"
 #include "enums/MemoryMode.hh"
 #include "mem/mem_object.hh"
+#include "mem/physical.hh"
 #include "mem/port.hh"
 #include "mem/port_proxy.hh"
-#include "mem/physical.hh"
 #include "params/System.hh"
+#include "sim/futex_map.hh"
+#include "sim/se_signal.hh"
 
 /**
  * To avoid linking errors with LTO, only include the header if we
@@ -69,13 +71,13 @@
  */
 #if THE_ISA != NULL_ISA
 #include "cpu/pc_event.hh"
+
 #endif
 
-class BaseCPU;
 class BaseRemoteGDB;
 class GDBListener;
+class KvmVM;
 class ObjectFile;
-class Platform;
 class ThreadContext;
 
 class System : public MemObject
@@ -227,7 +229,7 @@ class System : public MemObject
     /** Object pointer for the kernel code */
     ObjectFile *kernel;
 
-    /** Begining of kernel code */
+    /** Beginning of kernel code */
     Addr kernelStart;
 
     /** End of kernel code */
@@ -245,19 +247,19 @@ class System : public MemObject
     Addr loadAddrMask;
 
     /** Offset that should be used for binary/symbol loading.
-     * This further allows more flexibily than the loadAddrMask allows alone in
-     * loading kernels and similar. The loadAddrOffset is applied after the
+     * This further allows more flexibility than the loadAddrMask allows alone
+     * in loading kernels and similar. The loadAddrOffset is applied after the
      * loadAddrMask.
      */
     Addr loadAddrOffset;
 
-  protected:
-    uint64_t nextPID;
-
   public:
-    uint64_t allocatePID()
-    {
-        return nextPID++;
+    /**
+     * Get a pointer to the Kernel Virtual Machine (KVM) SimObject,
+     * if present.
+     */
+    KvmVM* getKvmVM() {
+        return kvmVM;
     }
 
     /** Get a pointer to access the physical memory of the system */
@@ -289,7 +291,7 @@ class System : public MemObject
     Addr getPageBytes() const { return TheISA::PageBytes; }
 
     /**
-     * Get the number of bits worth of in-page adress for the ISA.
+     * Get the number of bits worth of in-page address for the ISA.
      */
     Addr getPageShift() const { return TheISA::PageShift; }
 
@@ -299,6 +301,8 @@ class System : public MemObject
     ThermalModel * getThermalModel() const { return thermalModel; }
 
   protected:
+
+    KvmVM *const kvmVM;
 
     PhysicalMemory physmem;
 
@@ -311,7 +315,7 @@ class System : public MemObject
     uint32_t numWorkIds;
     std::vector<bool> activeCpus;
 
-    /** This array is a per-sytem list of all devices capable of issuing a
+    /** This array is a per-system list of all devices capable of issuing a
      * memory system request and an associated string for each master id.
      * It's used to uniquely id any master in the system by name for things
      * like cache statistics.
@@ -325,8 +329,8 @@ class System : public MemObject
     /** Request an id used to create a request object in the system. All objects
      * that intend to issues requests into the memory system must request an id
      * in the init() phase of startup. All master ids must be fixed by the
-     * regStats() phase that immediately preceeds it. This allows objects in the
-     * memory system to understand how many masters may exist and
+     * regStats() phase that immediately precedes it. This allows objects in
+     * the memory system to understand how many masters may exist and
      * appropriately name the bins of their per-master stats before the stats
      * are finalized
      */
@@ -501,19 +505,19 @@ class System : public MemObject
   public:
 
     /**
-     * Returns the addess the kernel starts at.
+     * Returns the address the kernel starts at.
      * @return address the kernel starts at
      */
     Addr getKernelStart() const { return kernelStart; }
 
     /**
-     * Returns the addess the kernel ends at.
+     * Returns the address the kernel ends at.
      * @return address the kernel ends at
      */
     Addr getKernelEnd() const { return kernelEnd; }
 
     /**
-     * Returns the addess the entry point to the kernel code.
+     * Returns the address the entry point to the kernel code.
      * @return entry point of the kernel code
      */
     Addr getKernelEntry() const { return kernelEntry; }
@@ -548,14 +552,22 @@ class System : public MemObject
 
     static void printSystems();
 
-    // For futex system call
-    std::map<uint64_t, std::list<ThreadContext *> * > futexMap;
+    FutexMap futexMap;
+
+    static const int maxPID = 32768;
+
+    /** Process set to track which PIDs have already been allocated */
+    std::set<int> PIDs;
+
+    // By convention, all signals are owned by the receiving process. The
+    // receiver will delete the signal upon reception.
+    std::list<BasicSignal> signalList;
 
   protected:
 
     /**
      * If needed, serialize additional symbol table entries for a
-     * specific subclass of this sytem. Currently this is used by
+     * specific subclass of this system. Currently this is used by
      * Alpha and MIPS.
      *
      * @param os stream to serialize to

@@ -41,6 +41,7 @@
 #include <string>
 #include <vector>
 
+#include "base/trace.hh"
 #include "debug/RubyQueue.hh"
 #include "mem/ruby/common/Address.hh"
 #include "mem/ruby/common/Consumer.hh"
@@ -100,7 +101,10 @@ class MessageBuffer : public SimObject
 
     //! Updates the delay cycles of the message at the head of the queue,
     //! removes it from the queue and returns its total delay.
-    Tick dequeue(Tick current_time);
+    Tick dequeue(Tick current_time, bool decrement_messages = true);
+
+    void registerDequeueCallback(std::function<void()> callback);
+    void unregisterDequeueCallback();
 
     void recycle(Tick current_time, Tick recycle_latency);
     bool isEmpty() const { return m_prio_heap.size() == 0; }
@@ -133,13 +137,43 @@ class MessageBuffer : public SimObject
     Consumer* m_consumer;
     std::vector<MsgPtr> m_prio_heap;
 
+    std::function<void()> m_dequeue_callback;
+
     // use a std::map for the stalled messages as this container is
     // sorted and ensures a well-defined iteration order
     typedef std::map<Addr, std::list<MsgPtr> > StallMsgMapType;
 
+    /**
+     * A map from line addresses to lists of stalled messages for that line.
+     * If this buffer allows the receiver to stall messages, on a stall
+     * request, the stalled message is removed from the m_prio_heap and placed
+     * in the m_stall_msg_map. Messages are held there until the receiver
+     * requests they be reanalyzed, at which point they are moved back to
+     * m_prio_heap.
+     *
+     * NOTE: The stall map holds messages in the order in which they were
+     * initially received, and when a line is unblocked, the messages are
+     * moved back to the m_prio_heap in the same order. This prevents starving
+     * older requests with younger ones.
+     */
     StallMsgMapType m_stall_msg_map;
 
+    /**
+     * Current size of the stall map.
+     * Track the number of messages held in stall map lists. This is used to
+     * ensure that if the buffer is finite-sized, it blocks further requests
+     * when the m_prio_heap and m_stall_msg_map contain m_max_size messages.
+     */
+    int m_stall_map_size;
+
+    /**
+     * The maximum capacity. For finite-sized buffers, m_max_size stores a
+     * number greater than 0 to indicate the maximum allowed number of messages
+     * in the buffer at any time. To get infinitely-sized buffers, set buffer
+     * size: m_max_size = 0
+     */
     const unsigned int m_max_size;
+
     Tick m_time_last_time_size_checked;
     unsigned int m_size_last_time_size_checked;
 
@@ -161,6 +195,11 @@ class MessageBuffer : public SimObject
 
     int m_input_link_id;
     int m_vnet_id;
+
+    Stats::Average m_buf_msgs;
+    Stats::Average m_stall_time;
+    Stats::Scalar m_stall_count;
+    Stats::Formula m_occupancy;
 };
 
 Tick random_time();

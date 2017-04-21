@@ -26,13 +26,14 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mem/ruby/system/DMASequencer.hh"
+
 #include <memory>
 
 #include "debug/RubyDma.hh"
 #include "debug/RubyStats.hh"
 #include "mem/protocol/SequencerMsg.hh"
 #include "mem/protocol/SequencerRequestType.hh"
-#include "mem/ruby/system/DMASequencer.hh"
 #include "mem/ruby/system/RubySystem.hh"
 
 DMARequest::DMARequest(uint64_t start_paddr, int len, bool write,
@@ -191,9 +192,7 @@ DMASequencer::dataCallback(const DataBlock & dblk, const Addr& address)
 void
 DMASequencer::ackCallback(const Addr& address)
 {
-    RequestTable::iterator i = m_RequestTable.find(address);
-    assert(i != m_RequestTable.end());
-
+    assert(m_RequestTable.find(address) != m_RequestTable.end());
     issueNext(address);
 }
 

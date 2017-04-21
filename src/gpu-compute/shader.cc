@@ -50,7 +50,7 @@
 #include "mem/ruby/system/RubySystem.hh"
 #include "sim/sim_exit.hh"
 
-Shader::Shader(const Params *p) : SimObject(p),
+Shader::Shader(const Params *p) : ClockedObject(p),
     clock(p->clk_domain->clockPeriod()), cpuThread(nullptr), gpuTc(nullptr),
     cpuPointer(p->cpu_pointer), tickEvent(this), timingSim(p->timing),
     hsail_mode(SIMT), impl_kern_boundary_sync(p->impl_kern_boundary_sync),
@@ -79,18 +79,20 @@ Shader::mmap(int length)
     length = roundUp(length, TheISA::PageBytes);
 
     Process *proc = gpuTc->getProcessPtr();
+    auto mem_state = proc->memState;
 
     if (proc->mmapGrowsDown()) {
         DPRINTF(HSAIL, "GROWS DOWN");
-        start = proc->mmap_end - length;
-        proc->mmap_end = start;
+        start = mem_state->getMmapEnd() - length;
+        mem_state->setMmapEnd(start);
     } else {
         DPRINTF(HSAIL, "GROWS UP");
-        start = proc->mmap_end;
-        proc->mmap_end += length;
+        start = mem_state->getMmapEnd();
+        mem_state->setMmapEnd(start + length);
 
         // assertion to make sure we don't overwrite the stack (it grows down)
-        assert(proc->mmap_end < proc->stack_base - proc->max_stack_size);
+        assert(mem_state->getStackBase() - mem_state->getMaxStackSize() >
+               mem_state->getMmapEnd());
     }
 
     DPRINTF(HSAIL,"Shader::mmap start= %#x, %#x\n", start, length);

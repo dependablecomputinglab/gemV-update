@@ -45,10 +45,6 @@ class System(MemObject):
     system_port = MasterPort("System port")
 
     @classmethod
-    def export_method_cxx_predecls(cls, code):
-        code('#include "sim/system.hh"')
-
-    @classmethod
     def export_methods(cls, code):
         code('''
       Enums::MemoryMode getMemoryMode() const;
@@ -65,7 +61,7 @@ class System(MemObject):
 
     # When reserving memory on the host, we have the option of
     # reserving swap space or not (by passing MAP_NORESERVE to
-    # mmap). By enabling this flag, we accomodate cases where a large
+    # mmap). By enabling this flag, we accommodate cases where a large
     # (but sparse) memory is simulated.
     mmap_using_noreserve = Param.Bool(False, "mmap the backing store " \
                                           "without reserving swap")
@@ -111,3 +107,6 @@ class System(MemObject):
     # Dynamic voltage and frequency handler for the system, disabled by default
     # Provide list of domains that need to be controlled by the handler
     dvfs_handler = DVFSHandler()
+
+    if buildEnv['USE_KVM']:
+        kvm_vm = Param.KvmVM(NULL, 'KVM VM (i.e., shared memory domain)')
