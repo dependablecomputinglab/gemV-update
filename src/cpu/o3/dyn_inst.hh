@@ -305,8 +305,8 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     {
         //VUL_TRACKER REGISTER_FILE
         //this->vulT.vulOnRead(ST_REGFILE, RF_REGISTER, this->_srcRegIdx[idx]);
-        if(this->cpu->rfVulEnable)
-            this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
+        //if(this->cpu->rfVulEnable)
+        //    this->cpu->regVulCalc.vulOnRead(this->_srcRegIdx[idx], this->seqNum);
         
         //VUL_TRACKER
         if(this->accessor == this->INST_Q)
@@ -379,8 +379,8 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     {
         //VUL_TRACKER REGISTER_FILE
         //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
-        if(this->cpu->rfVulEnable)
-            this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
+        //if(this->cpu->rfVulEnable)
+            //this->cpu->regVulCalc.vulOnWrite(this->_destRegIdx[idx], this->seqNum);
 
         //VUL_TRACKER
         if(this->accessor == this->INST_Q)

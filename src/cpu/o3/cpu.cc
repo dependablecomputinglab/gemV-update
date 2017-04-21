@@ -200,9 +200,9 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
       globalSeqNum(1),
       system(params->system),
       lastRunningCycle(curCycle()),
-      regVulCalc(regFile.totalNumPhysRegs(), params->fi_reg, TheISA::ZeroReg, params->numPhysIntRegs+params->numPhysFloatRegs+CCREG_ZERO),           //VUL_RF
-      pipeVulT(sizeof(RegIndex), sizeof(PhysRegIndex), sizeof(InstSeqNum), BaseDynInst<O3CPUImpl>::FlagWidth),
-      renameVulT(TheISA::NumIntRegs + TheISA::NumFloatRegs + TheISA::NumCCRegs, numThreads, sizeof(RegIndex), sizeof(PhysRegIndex), sizeof(InstSeqNum)),                   //VUL_TRACKER
+      regVulCalc(regFile.totalNumPhysRegs(), params->fi_reg, TheISA::ZeroReg, params->numPhysIntRegs+params->numPhysFloatRegs),           //VUL_RF
+      pipeVulT(sizeof(RegIndex)*8, sizeof(PhysRegIndex)*8, sizeof(InstSeqNum)*8, BaseDynInst<O3CPUImpl>::FlagWidth),
+      renameVulT(TheISA::NumIntRegs + TheISA::NumFloatRegs + TheISA::NumCCRegs, numThreads, sizeof(RegIndex)*8, sizeof(PhysRegIndex)*8, sizeof(InstSeqNum)*8),                   //VUL_TRACKER
       enableVulAnalysis(params->vul_analysis),                                //VUL_TRACKER
       robVulEnable(params->rob_vul_enable),                                   //VUL_TRACKER
       rfVulEnable(params->rf_vul_enable),                                   //VUL_TRACKER
@@ -1426,8 +1426,8 @@ FullO3CPU<Impl>::readArchCCReg(int reg_idx, ThreadID tid)
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupCC(reg_idx);
 
     //VUL_TRACKER
-    if(rfVulEnable)
-        this->regVulCalc.vulOnRead(phys_reg, 0);
+    //if(rfVulEnable)
+        //this->regVulCalc.vulOnRead(phys_reg, 0);
 
     return regFile.readCCReg(phys_reg);
 }
@@ -1482,8 +1482,8 @@ FullO3CPU<Impl>::setArchCCReg(int reg_idx, CCReg val, ThreadID tid)
     PhysRegIndex phys_reg = commitRenameMap[tid].lookupCC(reg_idx);
     
     //VUL_TRACKER
-    if(rfVulEnable)
-        this->regVulCalc.vulOnWrite(phys_reg, 0);
+    //if(rfVulEnable)
+        //this->regVulCalc.vulOnWrite(phys_reg, 0);
 
     regFile.setCCReg(phys_reg, val);
 }

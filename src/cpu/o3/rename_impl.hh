@@ -1156,7 +1156,7 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)flat_rel_dest_reg, inst->seqNum, tid);
-                this->cpu->renameVulT.vulOnWriteHB((int)flat_rel_dest_reg, inst->seqNum, tid);
+                this->cpu->renameVulT.vulOnWriteHB((int)flat_rel_dest_reg, inst->seqNum, tid, historyBuffer[tid].size()+1);
             }
 
             break;
@@ -1171,7 +1171,7 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
                             , inst->seqNum, tid);
                 this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs)
-                            , inst->seqNum, tid);
+                            , inst->seqNum, tid, historyBuffer[tid].size()+1);
             }
 
             break;
@@ -1184,7 +1184,7 @@ DefaultRename<Impl>::renameDestRegs(DynInstPtr &inst, ThreadID tid)
             //VUL_TRACKER Write to Rename map
             if(this->cpu->renameVulEnable) {
                 this->cpu->renameVulT.vulOnRead((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
-                this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid);
+                this->cpu->renameVulT.vulOnWriteHB((int)(flat_rel_dest_reg + TheISA::NumIntRegs + TheISA::NumFloatRegs), inst->seqNum, tid, historyBuffer[tid].size()+1);
             }
 
             break;
