@@ -63,6 +63,7 @@
 #include "mem/cache/mshr.hh"
 #include "mem/cache/prefetch/base.hh"
 #include "sim/sim_exit.hh"
+#include "debug/Symptom.hh"
 
 Cache::Cache(const CacheParams *p)
     : BaseCache(p, p->system->cacheLineSize()),
@@ -332,7 +333,12 @@ Cache::access(PacketPtr pkt, CacheBlk *&blk, Cycles &lat,
     DPRINTF(Cache, "%s %s\n", pkt->print(),
             blk ? "hit " + blk->print() : "miss");
 
+    //HwiSoo
+    if(!blk&&!pkt->req->isInstFetch())
+        DPRINTF(Symptom, "CacheMiss:PC:%x:seqNum:%d:inst:%s\n", pkt->req->symptom_pc, pkt->req->symptom_seqNum, pkt->req->symptom_instName);
 
+            
+            
     if (pkt->isEviction()) {
         // We check for presence of block in above caches before issuing
         // Writeback or CleanEvict to write buffer. Therefore the only

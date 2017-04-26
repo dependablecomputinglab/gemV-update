@@ -351,6 +351,10 @@ class Request
     AtomicOpFunctor *atomicOpFunctor;
 
   public:
+    //HwiSoo
+    Addr symptom_pc;
+    InstSeqNum symptom_seqNum;
+    std::string symptom_instName;
 
     /**
      * Minimal constructor. No fields are initialized. (Note that

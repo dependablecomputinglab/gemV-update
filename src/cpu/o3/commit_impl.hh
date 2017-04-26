@@ -67,6 +67,7 @@
 #include "params/DerivO3CPU.hh"
 #include "sim/faults.hh"
 #include "sim/full_system.hh"
+#include "debug/Symptom.hh"
 
 using namespace std;
 
@@ -904,6 +905,21 @@ DefaultCommit<Impl>::commit()
                      toIEW->commitInfo[tid].branchTaken = true;
                 }
                 ++branchMispredicts;
+                /* HwiSoo: disable temporally (consider only iew mispredict detect currently)
+                //HwiSoo
+                DynInstPtr misInst = toIEW->commitInfo[tid].mispredictInst;
+                std::string my_inst = misInst->staticInst->generateDisassembly(misInst->pcState().instAddr(), debugSymbolTable);
+                //DPRINTF(Symptom, "%#x\t%s\tTaken\tTaken\tIncorrect\n", misInst->pcState().instAddr(), my_inst); //HwiSoo
+                
+                if(misInst->readPredTaken() && !toIEW->commitInfo[tid].branchTaken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tNotTaken\tIncorrect\t%llu\n", misInst->pcState().instAddr(), my_inst,misInst->seqNum); 
+                else if(misInst->readPredTaken() && toIEW->commitInfo[tid].branchTaken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tMisTaken\tIncorrect\t%llu\n", misInst->pcState().instAddr(), my_inst,misInst->seqNum); 
+                else if(!misInst->readPredTaken() && toIEW->commitInfo[tid].branchTaken )
+                    DPRINTF(Symptom, "%#x\t%s\tNotTaken\tTaken\tIncorrect\t%llu\n", misInst->pcState().instAddr(), my_inst,misInst->seqNum); 
+                else
+                    DPRINTF(Symptom, "FI Error, is it really misprediction?\n"); //HwiSoo
+                */
             }
 
             toIEW->commitInfo[tid].pc = fromIEW->pc[tid];

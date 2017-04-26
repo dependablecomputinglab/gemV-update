@@ -285,7 +285,7 @@ class BaseDynInst : public ExecContext, public RefCounted
     /////////////////////// Checker //////////////////////
     // Need a copy of main request pointer to verify on writes.
     RequestPtr reqToVerify;
-
+    
   private:
     /** Instruction effective address.
      *  @todo: Consider if this is necessary or not.

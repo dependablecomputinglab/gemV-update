@@ -244,12 +244,6 @@ class StaticInst : public RefCounted, public StaticInstFlags
      */
     mutable std::string *cachedDisassembly;
 
-    /**
-     * Internal function to generate disassembly string.
-     */
-    virtual std::string
-    generateDisassembly(Addr pc, const SymbolTable *symtab) const = 0;
-
     /// Constructor.
     /// It's important to initialize everything here to a sane
     /// default, since the decoder generally only overrides
@@ -262,6 +256,14 @@ class StaticInst : public RefCounted, public StaticInstFlags
     { }
 
   public:
+  
+    //HwiSoo. move generateDisassembly to public
+    /**
+     * Internal function to generate disassembly string.
+     */
+    virtual std::string
+    generateDisassembly(Addr pc, const SymbolTable *symtab) const = 0;
+    
     virtual ~StaticInst();
 
     virtual Fault execute(ExecContext *xc,

@@ -470,6 +470,13 @@ def run(options, root, testsys, cpu_class):
             # Add checker cpu if selected
             if options.checker:
                 switch_cpus[i].addCheckerCpu()
+            #HwiSoo. for FI
+            switch_cpus[i].injectTime = options.injectTime
+            switch_cpus[i].injectLoc = options.injectLoc
+            if options.injectArch == "Reg":
+                switch_cpus[i].injectFaultReg = 1
+
+
 
         # If elastic tracing is enabled attach the elastic trace probe
         # to the switch CPUs

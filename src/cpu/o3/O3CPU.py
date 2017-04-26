@@ -156,6 +156,12 @@ class DerivO3CPU(BaseCPU):
     pipeline_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
     rename_vul_enable = Param.Unsigned(0, "Enable ROB vulnerability analysis")
 
+    #HwiSoo, parameter for injecting faults for Register
+    injectFaultReg = Param.Unsigned(0, "Inject a single-bit fault in Register or not (0: NO, 1: Yes)")
+    injectTime = Param.UInt64(0, "Time to inject fault")
+    injectLoc = Param.Unsigned(0, "Bit location to inject fault")
+
+    
     def addCheckerCpu(self):
         if buildEnv['TARGET_ISA'] in ['arm']:
             from ArmTLB import ArmTLB

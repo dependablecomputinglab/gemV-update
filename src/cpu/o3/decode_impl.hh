@@ -53,6 +53,7 @@
 #include "debug/O3PipeView.hh"
 #include "params/DerivO3CPU.hh"
 #include "sim/full_system.hh"
+#include "debug/Symptom.hh"
 
 #include "base/vulnerability/vul_tracker.hh"            //VUL_PIPELINE
 
@@ -758,10 +759,28 @@ DefaultDecode<Impl>::decodeInsts(ThreadID tid)
            (inst->isUncondCtrl() || inst->readPredTaken()))
         {
             ++decodeBranchResolved;
-
             if (!(inst->branchTarget() == inst->readPredTarg())) {
                 ++decodeBranchMispred;
-
+                //HwiSoo. note that processor predict "Not taken" in uncondCtrl
+                //when BTB doesn't have a valid entry
+                /* HwiSoo:disable temporally (consider only iew mispredict detect currently)
+                std::string my_inst = inst->staticInst->generateDisassembly(inst->pcState().instAddr(), debugSymbolTable);
+                //DPRINTF(Symptom, "%#x\t%s\tTaken\tTaken\tNo\n", inst->pcState().instAddr(), my_inst); //HwiSoo
+                
+                bool taken = inst->pcState().branching();
+                if (inst->isUncondCtrl()) {
+                        taken = true;
+                }
+                
+                if(inst->readPredTaken() && !taken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tNotTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum); //HwiSoo
+                else if(inst->readPredTaken() && taken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tMisTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum); //HwiSoo
+                else if(!inst->readPredTaken() && taken )
+                    DPRINTF(Symptom, "%#x\t%s\tNotTaken\tTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum); //HwiSoo
+                else
+                    DPRINTF(Symptom, "FI Error, is it really misprediction?\n"); //HwiSoo
+                */
                 // Might want to set some sort of boolean and just do
                 // a check at the end
                 squash(inst, inst->threadNumber);

@@ -578,6 +578,9 @@ class BaseCPU : public MemObject
 
   private:
     std::vector<AddressMonitor> addressMonitor;
+    
+  public:
+    InstSeqNum injectEarlySN; //HwiSoo: Sequnce number of instruction which is corrupted
 
   public:
     void armMonitor(ThreadID tid, Addr address);

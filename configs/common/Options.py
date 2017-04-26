@@ -111,6 +111,18 @@ def addNoISAOptions(parser):
     parser.add_option("--l3_assoc", type="int", default=16)
     parser.add_option("--cacheline_size", type="int", default=64)
     
+    #Fault Injection options
+    parser.add_option("--injectTime", type="int", default="0",
+                      help = "Time to inject fault")
+    parser.add_option("--injectLoc", type="int", default="0",
+                      help = "Bit location to inject fault")
+    parser.add_option("--injectArch", type="choice", default="NO",
+                      choices = ["Reg", "FU", "NO", "PipeReg", "LSQ"],
+                      help = """
+                      Which architecture do you want to inject fautls?
+                      - Default: No injection""")
+
+    
     #VUL Vulnerability options
     parser.add_option("--vul_analysis", type="choice", default="no",
                 choices = ["yes","no"],

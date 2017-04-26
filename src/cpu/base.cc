@@ -136,6 +136,7 @@ BaseCPU::BaseCPU(Params *p, bool is_checker)
       functionTraceStream(nullptr), currentFunctionStart(0),
       currentFunctionEnd(0), functionEntryTick(0),
       addressMonitor(p->numThreads),
+      injectEarlySN(-1),//HwiSoo
       syscallRetryLatency(p->syscallRetryLatency)
 {
     // if Python did not provide a valid ID, do it here

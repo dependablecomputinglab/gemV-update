@@ -905,6 +905,11 @@ LSQUnit<Impl>::writebackStores()
             data_pkt = Packet::createWrite(req);
             data_pkt->dataStatic(inst->memData);
             data_pkt->senderState = state;
+            
+            //HwiSoo
+            data_pkt->req->symptom_pc = inst->pcState().instAddr();
+            data_pkt->req->symptom_seqNum = inst->seqNum;
+            data_pkt->req->symptom_instName = inst->staticInst->getName();
         } else {
             // Create two packets if the store is split in two.
             data_pkt = Packet::createWrite(sreqLow);
@@ -918,6 +923,16 @@ LSQUnit<Impl>::writebackStores()
 
             state->isSplit = true;
             state->outstanding = 2;
+            
+            //HwiSoo
+            data_pkt->req->symptom_pc = inst->pcState().instAddr();
+            data_pkt->req->symptom_seqNum = inst->seqNum;
+            data_pkt->req->symptom_instName = inst->staticInst->getName();
+            
+            //HwiSoo
+            snd_data_pkt->req->symptom_pc = inst->pcState().instAddr();
+            snd_data_pkt->req->symptom_seqNum = inst->seqNum;
+            snd_data_pkt->req->symptom_instName = inst->staticInst->getName();
 
             // Can delete the main request now.
             delete req;

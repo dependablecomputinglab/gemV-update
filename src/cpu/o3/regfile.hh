@@ -42,6 +42,7 @@
 #include "config/the_isa.hh"
 #include "cpu/o3/comm.hh"
 #include "debug/IEW.hh"
+#include "debug/FI.hh"
 
 class UnifiedFreeList;
 
@@ -260,6 +261,30 @@ class PhysRegFile
                 int(reg_idx), (uint64_t)val);
 
         ccRegFile[reg_offset] = val;
+    }
+    
+    bool flipRegFile (uint64_t injectLoc, uint64_t *originalRegData)
+    {
+        //currently, 32bit
+        if(injectLoc < baseFloatRegIndex*32) {
+            *originalRegData = intRegFile[injectLoc/32];
+            uint64_t bit_flip = intRegFile[injectLoc/32] ^ (1UL << (injectLoc%32));
+            DPRINTF(FI, "Flipping int reg %d from %#x to %#x\n", injectLoc/32, intRegFile[injectLoc/32], bit_flip);
+            intRegFile[injectLoc/32] = bit_flip;
+            //injectIdx = injectLoc/32;
+            return true;
+        } 
+        /*
+        else {
+            *originalRegData = floatRegs.i[injectLoc/32];  //.i? .f?
+            uint32_t temp = floatRegs.i[injectLoc/32];
+            uint32_t bit_flip = temp ^ (1UL << (injectLoc%32));
+            DPRINTF(FI, "Flipping float reg %d from %#x to %#x\n", injectLoc/32, floatRegs.i[injectLoc/32], bit_flip);
+            floatRegs.i[injectLoc/32] = bit_flip;
+            return true;
+        }*/
+        return false;
+
     }
 };
 

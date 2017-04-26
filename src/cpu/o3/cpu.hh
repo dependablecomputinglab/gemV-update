@@ -136,7 +136,6 @@ class FullO3CPU : public BaseO3CPU
      * */
     //QueueType prevQueue;
 
-    //QueueType nextQueue;
 
 
   private:
@@ -716,6 +715,19 @@ class FullO3CPU : public BaseO3CPU
     /** Ease of programming */
     int totalNumRegs;                                       //VUL_TRACKER
 
+    
+    //QueueType nextQueue;
+    //HwiSoo. for FI
+    unsigned injectFaultReg;
+    uint64_t injectTime;
+    unsigned injectLoc;
+    bool injectReg;
+    
+    //HwiSoo
+    void injectFaultRegFunc();
+    uint64_t originalRegData;
+
+    
     /** The cycle that the CPU was last activated by a new thread*/
     Tick lastActivatedCycle;
 

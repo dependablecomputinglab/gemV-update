@@ -74,6 +74,7 @@
 #include "sim/full_system.hh"
 #include "sim/system.hh"
 #include "cpu/o3/isa_specific.hh"
+#include "debug/Symptom.hh"
 
 #include "base/vulnerability/vul_tracker.hh"        //VUL_TRACKER
 

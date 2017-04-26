@@ -213,7 +213,11 @@ FullO3CPU<Impl>::FullO3CPU(DerivO3CPUParams *params)
       lsqVulEnable(params->lsq_vul_enable),                                   //VUL_TRACKER
       pipeVulEnable(params->pipeline_vul_enable),                                   //VUL_TRACKER
       renameVulEnable(params->rename_vul_enable),                                   //VUL_TRACKER
-      totalNumRegs(regFile.totalNumPhysRegs())                                //VUL_TRACKER
+      totalNumRegs(regFile.totalNumPhysRegs()),                                //VUL_TRACKER
+      injectFaultReg(params->injectFaultReg), //HwiSoo: 0-> No injection, 1-> Fault injection
+      injectTime(params->injectTime),         //HwiSoo: Injection time
+      injectLoc(params->injectLoc),           //HwiSoo: Injection location
+      injectReg(false)
 {
     if (!params->switched_out) {
         _status = Running;
@@ -587,6 +591,8 @@ template <class Impl>
 void
 FullO3CPU<Impl>::tick()
 {
+    injectFaultRegFunc();
+    
     DPRINTF(O3CPU, "\n\nFullO3CPU: Ticking main, FullO3CPU.\n");
     assert(!switchedOut());
     assert(drainState() != DrainState::Drained);
@@ -1806,6 +1812,36 @@ FullO3CPU<Impl>::updateThreadPriority()
         activeThreads.push_back(high_thread);
     }
 }
+
+
+template <class Impl>
+void
+FullO3CPU<Impl>::injectFaultRegFunc()
+{
+    //if((checkFaultReg==1 || injectFaultReg==1)&&curTick()>=injectTime) {        
+    if(injectFaultReg==1&&curTick()>=injectTime) {        
+        if(injectFaultReg == 1) {
+            injectReg = regFile.flipRegFile(injectLoc, &originalRegData);
+            //traceReg = true;
+        }
+        else {
+            //checkReg = true;
+            //traceReg = true;
+        }
+
+        if(injectReg)
+        {
+            injectFaultReg = 0;
+            //add register information to faultyRegs
+            //RCDBP[injectLoc/32] = originalRegData;
+        }
+        else {
+            //if(injectLoc >= threads[0]->totalNumPhysRegs()*32)
+            //    injectLoc = injectLoc - threads[0]->totalNumPhysRegs()*32;
+        }
+    }
+}
+
 
 // Forward declaration of FullO3CPU.
 template class FullO3CPU<O3CPUImpl>;

@@ -610,6 +610,11 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
         Cycles delay(0);
         PacketPtr data_pkt = new Packet(req, MemCmd::ReadReq);
 
+        //HwiSoo
+        data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+        data_pkt->req->symptom_seqNum = load_inst->seqNum;
+        data_pkt->req->symptom_instName = load_inst->staticInst->getName();
+        
         if (!TheISA::HasUnalignedMemAcc || !sreqLow) {
             data_pkt->dataStatic(load_inst->memData);
             delay = TheISA::handleIprRead(thread, data_pkt);
@@ -617,6 +622,17 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
             assert(sreqLow->isMmappedIpr() && sreqHigh->isMmappedIpr());
             PacketPtr fst_data_pkt = new Packet(sreqLow, MemCmd::ReadReq);
             PacketPtr snd_data_pkt = new Packet(sreqHigh, MemCmd::ReadReq);
+            
+            //HwiSoo
+            fst_data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+            fst_data_pkt->req->symptom_seqNum = load_inst->seqNum;
+            fst_data_pkt->req->symptom_instName = load_inst->staticInst->getName();
+            
+            //HwiSoo
+            snd_data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+            snd_data_pkt->req->symptom_seqNum = load_inst->seqNum;
+            snd_data_pkt->req->symptom_instName = load_inst->staticInst->getName();
+            
 
             fst_data_pkt->dataStatic(load_inst->memData);
             snd_data_pkt->dataStatic(load_inst->memData + sreqLow->getSize());
@@ -782,6 +798,11 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
     if (!TheISA::HasUnalignedMemAcc || !sreqLow) {
         // Point the first packet at the main data packet.
         fst_data_pkt = data_pkt;
+        
+        //HwiSoo
+        fst_data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+        fst_data_pkt->req->symptom_seqNum = load_inst->seqNum;
+        fst_data_pkt->req->symptom_instName = load_inst->staticInst->getName();
     } else {
         // Create the split packets.
         fst_data_pkt = Packet::createRead(sreqLow);
@@ -796,7 +817,19 @@ LSQUnit<Impl>::read(Request *req, Request *sreqLow, Request *sreqHigh,
         state->isSplit = true;
         state->outstanding = 2;
         state->mainPkt = data_pkt;
+        
+        //HwiSoo
+        fst_data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+        fst_data_pkt->req->symptom_seqNum = load_inst->seqNum;
+        fst_data_pkt->req->symptom_instName = load_inst->staticInst->getName();
+        
+        //HwiSoo
+        snd_data_pkt->req->symptom_pc = load_inst->pcState().instAddr();
+        snd_data_pkt->req->symptom_seqNum = load_inst->seqNum;
+        snd_data_pkt->req->symptom_instName = load_inst->staticInst->getName();
     }
+    
+    
 
     // For now, load throughput is constrained by the number of
     // load FUs only, and loads do not consume a cache port (only

@@ -61,6 +61,8 @@
 #include "debug/IEW.hh"
 #include "debug/O3PipeView.hh"
 #include "params/DerivO3CPU.hh"
+#include "debug/Symptom.hh"
+#include "debug/FI.hh"
 
 using namespace std;
 
@@ -1185,6 +1187,8 @@ template <class Impl>
 void
 DefaultIEW<Impl>::executeInsts()
 {
+    InstSeqNum oldestSN=-1;
+    
     wbNumInst = 0;
     wbCycle = 0;
 
@@ -1209,6 +1213,8 @@ DefaultIEW<Impl>::executeInsts()
         DPRINTF(IEW, "Execute: Executing instructions from IQ.\n");
 
         DynInstPtr inst = instQueue.getInstToExecute();
+        if(oldestSN==-1 || inst->seqNum<oldestSN)
+            oldestSN = inst->seqNum;
 
         DPRINTF(IEW, "Execute: Processing PC %s, [tid:%i] [sn:%i].\n",
                 inst->pcState(), inst->threadNumber,inst->seqNum);
@@ -1334,12 +1340,30 @@ DefaultIEW<Impl>::executeInsts()
 
             if (inst->mispredicted() && !loadNotExecuted) {
                 fetchRedirect[tid] = true;
-
+                
                 DPRINTF(IEW, "Execute: Branch mispredict detected.\n");
                 DPRINTF(IEW, "Predicted target was PC: %s.\n",
                         inst->readPredTarg());
                 DPRINTF(IEW, "Execute: Redirecting fetch to PC: %s.\n",
                         inst->pcState());
+                        
+                //HwiSoo. Note that iew has 2 cases for branch mispredict detect
+                std::string my_inst = inst->staticInst->generateDisassembly(inst->pcState().instAddr(), debugSymbolTable);
+                //DPRINTF(Symptom, "%#x\t%s\tTaken\tTaken\tNo\n", inst->pcState().instAddr(), my_inst); 
+                
+                bool taken=inst->pcState().branching();
+                
+                if(inst->readPredTaken() && !taken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tNotTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+                else if(inst->readPredTaken() && taken)
+                    DPRINTF(Symptom, "%#x\t%s\tTaken\tMisTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+                else if(!inst->readPredTaken() && taken )
+                    DPRINTF(Symptom, "%#x\t%s\tNotTaken\tTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+                else
+                    DPRINTF(Symptom, "Symptom Error, is it really misprediction?\n");
+                            
+                            
+                        
                 // If incorrect, then signal the ROB that it must be squashed.
                 squashDueToBranch(inst, tid);
 
@@ -1393,6 +1417,13 @@ DefaultIEW<Impl>::executeInsts()
         }
     }
 
+    //HwiSoo
+    if(cpu->injectReg&&cpu->injectEarlySN == -1&&oldestSN!=-1)
+    {
+        cpu->injectEarlySN = oldestSN;
+        DPRINTF(FI, "cpu.injectEarlySN is %d\n", cpu->injectEarlySN);
+    }
+    
     // Update and record activity if we processed any instructions.
     if (inst_num) {
         if (exeStatus == Idle) {
@@ -1636,13 +1667,30 @@ DefaultIEW<Impl>::checkMisprediction(DynInstPtr &inst)
 
         if (inst->mispredicted()) {
             fetchRedirect[tid] = true;
-
+            
             DPRINTF(IEW, "Execute: Branch mispredict detected.\n");
             DPRINTF(IEW, "Predicted target was PC:%#x, NPC:%#x.\n",
                     inst->predInstAddr(), inst->predNextInstAddr());
             DPRINTF(IEW, "Execute: Redirecting fetch to PC: %#x,"
                     " NPC: %#x.\n", inst->nextInstAddr(),
                     inst->nextInstAddr());
+                    
+            //HwiSoo. Note that iew has 2 cases for branch mispredict detect
+            std::string my_inst = inst->staticInst->generateDisassembly(inst->pcState().instAddr(), debugSymbolTable);
+            //DPRINTF(Symptom, "%#x\t%s\tTaken\tTaken\tNo\n", inst->pcState().instAddr(), my_inst); //HwiSoo
+            
+            bool taken=inst->pcState().branching();
+            
+            if(inst->readPredTaken() && !taken)
+                DPRINTF(Symptom, "%#x\t%s\tTaken\tNotTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+            else if(inst->readPredTaken() && taken)
+                DPRINTF(Symptom, "%#x\t%s\tTaken\tMisTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+            else if(!inst->readPredTaken() && taken )
+                DPRINTF(Symptom, "%#x\t%s\tNotTaken\tTaken\tIncorrect\t%llu\n", inst->pcState().instAddr(), my_inst,inst->seqNum);
+            else
+                DPRINTF(Symptom, "Symptom Error, is it really misprediction?\n");
+                    
+                    
             // If incorrect, then signal the ROB that it must be squashed.
             squashDueToBranch(inst, tid);
 

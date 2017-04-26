@@ -247,6 +247,41 @@ for i in xrange(np):
     if options.checker:
         system.cpu[i].addCheckerCpu()
 
+    #for FI
+    #HwiSoo, variables for injecting faults
+    system.cpu[i].injectTime = options.injectTime;
+    system.cpu[i].injectLoc = options.injectLoc;
+
+    # JONGHO
+    #system.cpu[i].injectComp = options.injectComp;
+
+    if options.injectArch == "Reg":
+        system.cpu[i].injectFaultReg = 1
+    #if options.checkArch == "Reg":
+    #    system.cpu[i].checkFaultReg = 1
+    #ybkim
+    #if options.injectArch == "FU":
+    #    system.cpu[i].injectFaultFu = 1
+    #if options.checkArch == "FU":
+    #    system.cpu[i].checkFaultFu = 1
+    #YOHAN
+    #if options.correctRf == "YES":
+    #    system.cpu[i].correctRf = True
+    #system.cpu[i].correctTime = options.correctTime
+    #if options.traceMask == "YES":
+    #    system.cpu[i].traceMask = True
+    #if options.correctStore:
+    #    system.cpu[i].correctStore = True
+    #if options.correctLoad:
+    #    system.cpu[i].correctLoad = True
+
+            #hwisoo
+    #if options.injectArch == "LSQ":
+    #    system.cpu[i].injectFaultLSQ = 1;
+    #if options.checkArch == "LSQ":
+    #    system.cpu[i].checkFaultLSQ = 1;
+
+        
     #VUL
     if options.vul_analysis == "yes":                                   #VUL
         system.cpu[i].vul_analysis = 1;                                 #VUL
