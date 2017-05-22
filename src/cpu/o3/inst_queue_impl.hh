@@ -54,6 +54,7 @@
 #include "enums/OpClass.hh"
 #include "params/DerivO3CPU.hh"
 #include "sim/core.hh"
+#include "debug/Symptom.hh"
 
 // clang complains about std::set being overloaded with Packet::set if
 // we open up the entire namespace std
@@ -847,6 +848,8 @@ InstructionQueue<Impl>::scheduleReadyInsts()
             listOrder.erase(order_it++);
 
             ++iqSquashedInstsIssued;
+            //HwiSoo. Finding New Symptom
+            DPRINTF(Symptom, "IQSquashedInstIssued:PC:%x:seqNum:%d:inst:%s\n", issuing_inst->pcState(), issuing_inst->seqNum, issuing_inst->staticInst->getName());
 
             continue;
         }

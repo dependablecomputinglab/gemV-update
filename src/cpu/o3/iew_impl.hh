@@ -1049,6 +1049,9 @@ DefaultIEW<Impl>::dispatchInsts(ThreadID tid)
             toRename->iewUnblock[tid] = false;
 
             ++iewLSQFullEvents;
+            //HwiSoo. Finding New Symptom
+            DPRINTF(Symptom, "iewLSQFullEvents:PC:%x:seqNum:%d:inst:%s\n", inst->pcState(), inst->seqNum, inst->staticInst->getName());
+
             break;
         }
 

@@ -684,6 +684,11 @@ DefaultFetch<Impl>::finishTranslation(const Fault &fault, RequestPtr mem_req)
         PacketPtr data_pkt = new Packet(mem_req, MemCmd::ReadReq);
         data_pkt->dataDynamic(new uint8_t[fetchBufferSize]);
 
+        //HwiSoo, add information to packet for sypmtom
+        data_pkt->req->symptom_pc = pc[tid].instAddr();
+        data_pkt->req->symptom_seqNum = cpu->globalSeqNum;
+        data_pkt->req->symptom_instName = "InstFetch(temp)";
+
         fetchBufferPC[tid] = fetchBufferBlockPC;
         fetchBufferValid[tid] = false;
         DPRINTF(Fetch, "Fetch: Doing instruction read.\n");

@@ -61,7 +61,7 @@ while True:
         injectTime = valLine_split[0]
         injectLoc = valLine_split[1]
         valFailure = valLine_split[2]
-        valRuntime = valLine_split[5]
+        valRuntime = valLine_split[3]
     elif (injectArch == "LSQ"):
         injectTime = valLine_split[0]
         injectLoc = valLine_split[1]
@@ -94,6 +94,12 @@ while True:
         parseLine_split = parseLine.split(":")
         if parseLine_split[2] == " CacheMiss":
             missLog.write("CM " + parseLine_split[6]+"\n")
+        elif parseLine_split[2] == " ICMiss":
+            missLog.write("IM " + parseLine_split[6]+"\n")
+        elif parseLine_split[2] == " IQSquashedInstIssued":
+            missLog.write("SI " + parseLine_split[6]+"\n")
+        elif parseLine_split[2] == " iewLSQFullEvents":
+            missLog.write("LF " + parseLine_split[6]+"\n")
         elif "\tIncorrect\t" in parseLine_split[2]:
             missLog.write("BM " + parseLine_split[2].split("\t")[5])
         elif "injectEarlySN" in parseLine_split[2]:
