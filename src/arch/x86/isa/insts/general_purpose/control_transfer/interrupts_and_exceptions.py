@@ -32,17 +32,15 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Gabe Black
 
 microcode = '''
 def macroop IRET_REAL {
-    .serializing
+    .serialize_after
     panic "Real mode iret isn't implemented!"
 };
 
 def macroop IRET_PROT {
-    .serializing
+    .serialize_after
     .adjust_env oszIn64Override
 
     # Check for a nested task. This isn't supported at the moment.

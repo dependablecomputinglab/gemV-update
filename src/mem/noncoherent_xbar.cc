@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 ARM Limited
+ * Copyright (c) 2011-2015, 2018-2019 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -36,10 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Andreas Hansson
- *          William Wang
  */
 
 /**
@@ -49,7 +45,7 @@
 
 #include "mem/noncoherent_xbar.hh"
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/NoncoherentXBar.hh"
 #include "debug/XBar.hh"
@@ -65,7 +61,7 @@ NoncoherentXBar::NoncoherentXBar(const NoncoherentXBarParams *p)
         MasterPort* bp = new NoncoherentXBarMasterPort(portName, *this, i);
         masterPorts.push_back(bp);
         reqLayers.push_back(new ReqLayer(*bp, *this,
-                                         csprintf(".reqLayer%d", i)));
+                                         csprintf("reqLayer%d", i)));
     }
 
     // see if we have a default slave device connected and if so add
@@ -76,7 +72,7 @@ NoncoherentXBar::NoncoherentXBar(const NoncoherentXBarParams *p)
         MasterPort* bp = new NoncoherentXBarMasterPort(portName, *this,
                                                       defaultPortID);
         masterPorts.push_back(bp);
-        reqLayers.push_back(new ReqLayer(*bp, *this, csprintf(".reqLayer%d",
+        reqLayers.push_back(new ReqLayer(*bp, *this, csprintf("reqLayer%d",
                                                               defaultPortID)));
     }
 
@@ -86,10 +82,8 @@ NoncoherentXBar::NoncoherentXBar(const NoncoherentXBarParams *p)
         QueuedSlavePort* bp = new NoncoherentXBarSlavePort(portName, *this, i);
         slavePorts.push_back(bp);
         respLayers.push_back(new RespLayer(*bp, *this,
-                                           csprintf(".respLayer%d", i)));
+                                           csprintf("respLayer%d", i)));
     }
-
-    clearPortCache();
 }
 
 NoncoherentXBar::~NoncoherentXBar()
@@ -110,7 +104,7 @@ NoncoherentXBar::recvTimingReq(PacketPtr pkt, PortID slave_port_id)
     assert(!pkt->isExpressSnoop());
 
     // determine the destination based on the address
-    PortID master_port_id = findPort(pkt->getAddr());
+    PortID master_port_id = findPort(pkt->getAddrRange());
 
     // test if the layer should be considered occupied for the current
     // port
@@ -245,7 +239,8 @@ NoncoherentXBar::recvReqRetry(PortID master_port_id)
 }
 
 Tick
-NoncoherentXBar::recvAtomic(PacketPtr pkt, PortID slave_port_id)
+NoncoherentXBar::recvAtomicBackdoor(PacketPtr pkt, PortID slave_port_id,
+                                    MemBackdoorPtr *backdoor)
 {
     DPRINTF(NoncoherentXBar, "recvAtomic: packet src %s addr 0x%x cmd %s\n",
             slavePorts[slave_port_id]->name(), pkt->getAddr(),
@@ -255,7 +250,7 @@ NoncoherentXBar::recvAtomic(PacketPtr pkt, PortID slave_port_id)
     unsigned int pkt_cmd = pkt->cmdToIndex();
 
     // determine the destination port
-    PortID master_port_id = findPort(pkt->getAddr());
+    PortID master_port_id = findPort(pkt->getAddrRange());
 
     // stats updates for the request
     pktCount[slave_port_id][master_port_id]++;
@@ -263,7 +258,9 @@ NoncoherentXBar::recvAtomic(PacketPtr pkt, PortID slave_port_id)
     transDist[pkt_cmd]++;
 
     // forward the request to the appropriate destination
-    Tick response_latency = masterPorts[master_port_id]->sendAtomic(pkt);
+    auto master = masterPorts[master_port_id];
+    Tick response_latency = backdoor ?
+        master->sendAtomicBackdoor(pkt, *backdoor) : master->sendAtomic(pkt);
 
     // add the response data
     if (pkt->isResponse()) {
@@ -297,7 +294,7 @@ NoncoherentXBar::recvFunctional(PacketPtr pkt, PortID slave_port_id)
         // if we find a response that has the data, then the
         // downstream caches/memories may be out of date, so simply stop
         // here
-        if (p->checkFunctional(pkt)) {
+        if (p->trySatisfyFunctional(pkt)) {
             if (pkt->needsResponse())
                 pkt->makeResponse();
             return;
@@ -305,7 +302,7 @@ NoncoherentXBar::recvFunctional(PacketPtr pkt, PortID slave_port_id)
     }
 
     // determine the destination port
-    PortID dest_id = findPort(pkt->getAddr());
+    PortID dest_id = findPort(pkt->getAddrRange());
 
     // forward the request to the appropriate destination
     masterPorts[dest_id]->sendFunctional(pkt);
@@ -315,15 +312,4 @@ NoncoherentXBar*
 NoncoherentXBarParams::create()
 {
     return new NoncoherentXBar(this);
-}
-
-void
-NoncoherentXBar::regStats()
-{
-    // register the stats of the base class and our layers
-    BaseXBar::regStats();
-    for (auto l: reqLayers)
-        l->regStats();
-    for (auto l: respLayers)
-        l->regStats();
 }

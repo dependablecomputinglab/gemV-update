@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 /**
@@ -60,8 +58,7 @@ class Root : public SimObject
     Time lastTime;
 
     void timeSync();
-    EventWrapper<Root, &Root::timeSync> syncEvent;
-    friend class EventWrapper<Root, &Root::timeSync>;
+    EventFunctionWrapper syncEvent;
 
   public:
     /**
@@ -104,16 +101,11 @@ class Root : public SimObject
 
     Root(Params *p);
 
-    /** Schedule the timesync event at loadState() so that curTick is correct
+    /** Schedule the timesync event at startup().
      */
-    void loadState(CheckpointIn &cp) override;
-
-    /** Schedule the timesync event at initState() when not unserializing
-     */
-    void initState() override;
+    void startup() override;
 
     void serialize(CheckpointOut &cp) const override;
-    void unserialize(CheckpointIn &cp) override;
 };
 
 #endif // __SIM_ROOT_HH__

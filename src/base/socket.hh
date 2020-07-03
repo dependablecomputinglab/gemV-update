@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 #ifndef __SOCKET_HH__
@@ -37,13 +35,23 @@ class ListenSocket
     static bool listeningDisabled;
     static bool anyListening;
 
+    static bool bindToLoopback;
+
   public:
     static void disableAll();
     static bool allDisabled();
 
+    static void loopbackOnly();
+
   protected:
     bool listening;
     int fd;
+
+    /*
+     * cleanup resets the static variables back to their default values.
+     */
+    static void cleanup();
+
 
   public:
     ListenSocket();

@@ -14,9 +14,9 @@
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software
- * without specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -29,9 +29,8 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * Author: John Kalamatianos, Anthony Gutierrez
  */
+
 #include "gpu-compute/compute_unit.hh"
 
 #include <limits>
@@ -56,7 +55,7 @@
 #include "mem/page_table.hh"
 #include "sim/process.hh"
 
-ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
+ComputeUnit::ComputeUnit(const Params *p) : ClockedObject(p), fetchStage(p),
     scoreboardCheckStage(p), scheduleStage(p), execStage(p),
     globalMemoryPipe(p), localMemoryPipe(p), rrNextMemID(0), rrNextALUWp(0),
     cu_id(p->cu_id), vrf(p->vector_register_file), numSIMDs(p->num_SIMDs),
@@ -74,7 +73,7 @@ ComputeUnit::ComputeUnit(const Params *p) : MemObject(p), fetchStage(p),
     coalescerToVrfBusWidth(p->coalescer_to_vrf_bus_width),
     req_tick_latency(p->mem_req_latency * p->clk_domain->clockPeriod()),
     resp_tick_latency(p->mem_resp_latency * p->clk_domain->clockPeriod()),
-    _masterId(p->system->getMasterId(name() + ".ComputeUnit")),
+    _masterId(p->system->getMasterId(this, "ComputeUnit")),
     lds(*p->localDataStore), _cacheLineSize(p->system->cacheLineSize()),
     globalSeqNum(0), wavefrontSize(p->wfSize),
     kernelLaunchInst(new KernelLaunchStaticInst())
@@ -653,7 +652,6 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         }
 
         delete pkt->senderState;
-        delete pkt->req;
         delete pkt;
         return true;
     } else if (pkt->req->isKernel() && pkt->req->isAcquire()) {
@@ -664,14 +662,12 @@ ComputeUnit::DataPort::recvTimingResp(PacketPtr pkt)
         }
 
         delete pkt->senderState;
-        delete pkt->req;
         delete pkt;
         return true;
     }
 
-    ComputeUnit::DataPort::MemRespEvent *mem_resp_event =
-        new ComputeUnit::DataPort::MemRespEvent(computeUnit->memPort[index],
-                                                pkt);
+    EventFunctionWrapper *mem_resp_event =
+        computeUnit->memPort[index]->createMemRespEvent(pkt);
 
     DPRINTF(GPUPort, "CU%d: WF[%d][%d]: index %d, addr %#x received!\n",
             computeUnit->cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
@@ -748,9 +744,10 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
     updatePageDivergenceDist(tmp_vaddr);
 
-    pkt->req->setVirt(pkt->req->getAsid(), tmp_vaddr, pkt->req->getSize(),
-                      pkt->req->getFlags(), pkt->req->masterId(),
-                      pkt->req->getPC());
+    // set PC in request
+    pkt->req->setPC(gpuDynInst->wavefront()->pc());
+
+    pkt->req->setReqInstSeqNum(gpuDynInst->seqNum());
 
     // figure out the type of the request to set read/write
     BaseTLB::Mode TLB_mode;
@@ -785,7 +782,7 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
             Addr paddr;
 
             if (!p->pTable->translate(vaddr, paddr)) {
-                if (!p->fixupStackFault(vaddr)) {
+                if (!p->fixupFault(vaddr)) {
                     panic("CU%d: WF[%d][%d]: Fault on addr %#x!\n",
                           cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
                           vaddr);
@@ -845,8 +842,8 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
             // translation is done. Schedule the mem_req_event at the
             // appropriate cycle to send the timing memory request to ruby
-            ComputeUnit::DataPort::MemReqEvent *mem_req_event =
-                new ComputeUnit::DataPort::MemReqEvent(memPort[index], pkt);
+            EventFunctionWrapper *mem_req_event =
+                memPort[index]->createMemReqEvent(pkt);
 
             DPRINTF(GPUPort, "CU%d: WF[%d][%d]: index %d, addr %#x data "
                     "scheduled\n", cu_id, gpuDynInst->simdId,
@@ -915,7 +912,6 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
         delete sender_state->tlbEntry;
         delete new_pkt;
         delete pkt->senderState;
-        delete pkt->req;
         delete pkt;
     }
 }
@@ -923,8 +919,8 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 void
 ComputeUnit::sendSyncRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 {
-    ComputeUnit::DataPort::MemReqEvent *mem_req_event =
-        new ComputeUnit::DataPort::MemReqEvent(memPort[index], pkt);
+    EventFunctionWrapper *mem_req_event =
+        memPort[index]->createMemReqEvent(pkt);
 
 
     // New SenderState for the memory access
@@ -940,12 +936,13 @@ ComputeUnit::sendSyncRequest(GPUDynInstPtr gpuDynInst, int index, PacketPtr pkt)
 
 void
 ComputeUnit::injectGlobalMemFence(GPUDynInstPtr gpuDynInst, bool kernelLaunch,
-                                  Request* req)
+                                  RequestPtr req)
 {
     assert(gpuDynInst->isGlobalSeg());
 
     if (!req) {
-        req = new Request(0, 0, 0, 0, masterId(), 0, gpuDynInst->wfDynId);
+        req = std::make_shared<Request>(
+            0, 0, 0, masterId(), 0, gpuDynInst->wfDynId);
     }
     req->setPaddr(0);
     if (kernelLaunch) {
@@ -972,26 +969,20 @@ ComputeUnit::injectGlobalMemFence(GPUDynInstPtr gpuDynInst, bool kernelLaunch,
     sendSyncRequest(gpuDynInst, 0, pkt);
 }
 
-const char*
-ComputeUnit::DataPort::MemRespEvent::description() const
-{
-    return "ComputeUnit memory response event";
-}
-
 void
-ComputeUnit::DataPort::MemRespEvent::process()
+ComputeUnit::DataPort::processMemRespEvent(PacketPtr pkt)
 {
     DataPort::SenderState *sender_state =
         safe_cast<DataPort::SenderState*>(pkt->senderState);
 
     GPUDynInstPtr gpuDynInst = sender_state->_gpuDynInst;
-    ComputeUnit *compute_unit = dataPort->computeUnit;
+    ComputeUnit *compute_unit = computeUnit;
 
     assert(gpuDynInst);
 
     DPRINTF(GPUPort, "CU%d: WF[%d][%d]: Response for addr %#x, index %d\n",
             compute_unit->cu_id, gpuDynInst->simdId, gpuDynInst->wfSlotId,
-            pkt->req->getPaddr(), dataPort->index);
+            pkt->req->getPaddr(), index);
 
     Addr paddr = pkt->req->getPaddr();
 
@@ -1045,8 +1036,9 @@ ComputeUnit::DataPort::MemRespEvent::process()
                 // this memory request
                 if (gpuDynInst->useContinuation) {
                     assert(!gpuDynInst->isNoScope());
-                    gpuDynInst->execContinuation(gpuDynInst->staticInstruction(),
-                                                 gpuDynInst);
+                    gpuDynInst->execContinuation(
+                        gpuDynInst->staticInstruction(),
+                        gpuDynInst);
                 }
             }
         }
@@ -1061,7 +1053,6 @@ ComputeUnit::DataPort::MemRespEvent::process()
     }
 
     delete pkt->senderState;
-    delete pkt->req;
     delete pkt;
 }
 
@@ -1087,7 +1078,7 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
                safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
     // no PageFaults are permitted for data accesses
-    if (!translation_state->tlbEntry->valid) {
+    if (!translation_state->tlbEntry) {
         DTLBPort::SenderState *sender_state =
             safe_cast<DTLBPort::SenderState*>(translation_state->saved);
 
@@ -1098,8 +1089,6 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
         DPRINTFN("Wave %d couldn't tranlate vaddr %#x\n", w->wfDynId,
                  pkt->req->getVaddr());
     }
-
-    assert(translation_state->tlbEntry->valid);
 
     // update the hitLevel distribution
     int hit_level = translation_state->hitLevel;
@@ -1184,11 +1173,11 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
             if (!stride)
                 break;
 
-            Request *prefetch_req = new Request(0, vaddr + stride * pf *
-                                                TheISA::PageBytes,
-                                                sizeof(uint8_t), 0,
-                                                computeUnit->masterId(),
-                                                0, 0, 0);
+            RequestPtr prefetch_req = std::make_shared<Request>(
+                vaddr + stride * pf * TheISA::PageBytes,
+                sizeof(uint8_t), 0,
+                computeUnit->masterId(),
+                0, 0, nullptr);
 
             PacketPtr prefetch_pkt = new Packet(prefetch_req, requestCmd);
             uint8_t foo = 0;
@@ -1211,7 +1200,6 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
 
             delete tlb_state->tlbEntry;
             delete tlb_state;
-            delete prefetch_pkt->req;
             delete prefetch_pkt;
         }
     }
@@ -1230,9 +1218,8 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
 
     // translation is done. Schedule the mem_req_event at the appropriate
     // cycle to send the timing memory request to ruby
-    ComputeUnit::DataPort::MemReqEvent *mem_req_event =
-        new ComputeUnit::DataPort::MemReqEvent(computeUnit->memPort[mp_index],
-                                               new_pkt);
+    EventFunctionWrapper *mem_req_event =
+        computeUnit->memPort[mp_index]->createMemReqEvent(new_pkt);
 
     DPRINTF(GPUPort, "CU%d: WF[%d][%d]: index %d, addr %#x data scheduled\n",
             computeUnit->cu_id, gpuDynInst->simdId,
@@ -1244,32 +1231,42 @@ ComputeUnit::DTLBPort::recvTimingResp(PacketPtr pkt)
     return true;
 }
 
-const char*
-ComputeUnit::DataPort::MemReqEvent::description() const
+EventFunctionWrapper*
+ComputeUnit::DataPort::createMemReqEvent(PacketPtr pkt)
 {
-    return "ComputeUnit memory request event";
+    return new EventFunctionWrapper(
+        [this, pkt]{ processMemReqEvent(pkt); },
+        "ComputeUnit memory request event", true);
+}
+
+EventFunctionWrapper*
+ComputeUnit::DataPort::createMemRespEvent(PacketPtr pkt)
+{
+    return new EventFunctionWrapper(
+        [this, pkt]{ processMemRespEvent(pkt); },
+        "ComputeUnit memory response event", true);
 }
 
 void
-ComputeUnit::DataPort::MemReqEvent::process()
+ComputeUnit::DataPort::processMemReqEvent(PacketPtr pkt)
 {
     SenderState *sender_state = safe_cast<SenderState*>(pkt->senderState);
     GPUDynInstPtr gpuDynInst = sender_state->_gpuDynInst;
-    ComputeUnit *compute_unit M5_VAR_USED = dataPort->computeUnit;
+    ComputeUnit *compute_unit M5_VAR_USED = computeUnit;
 
-    if (!(dataPort->sendTimingReq(pkt))) {
-        dataPort->retries.push_back(std::make_pair(pkt, gpuDynInst));
+    if (!(sendTimingReq(pkt))) {
+        retries.push_back(std::make_pair(pkt, gpuDynInst));
 
         DPRINTF(GPUPort,
                 "CU%d: WF[%d][%d]: index %d, addr %#x data req failed!\n",
                 compute_unit->cu_id, gpuDynInst->simdId,
-                gpuDynInst->wfSlotId, dataPort->index,
+                gpuDynInst->wfSlotId, index,
                 pkt->req->getPaddr());
     } else {
         DPRINTF(GPUPort,
                 "CU%d: WF[%d][%d]: index %d, addr %#x data req sent!\n",
                 compute_unit->cu_id, gpuDynInst->simdId,
-                gpuDynInst->wfSlotId, dataPort->index,
+                gpuDynInst->wfSlotId, index,
                 pkt->req->getPaddr());
     }
 }
@@ -1324,7 +1321,7 @@ ComputeUnit::ITLBPort::recvTimingResp(PacketPtr pkt)
     TheISA::GpuTLB::TranslationState *translation_state =
                  safe_cast<TheISA::GpuTLB::TranslationState*>(pkt->senderState);
 
-    bool success = translation_state->tlbEntry->valid;
+    bool success = translation_state->tlbEntry != nullptr;
     delete translation_state->tlbEntry;
     assert(!translation_state->ports.size());
     pkt->senderState = translation_state->saved;
@@ -1397,7 +1394,7 @@ ComputeUnit::ITLBPort::recvReqRetry()
 void
 ComputeUnit::regStats()
 {
-    MemObject::regStats();
+    ClockedObject::regStats();
 
     vALUInsts
         .name(name() + ".valu_insts")
@@ -1798,7 +1795,7 @@ ComputeUnit::sendToLds(GPUDynInstPtr gpuDynInst)
 {
     // this is just a request to carry the GPUDynInstPtr
     // back and forth
-    Request *newRequest = new Request();
+    RequestPtr newRequest = std::make_shared<Request>();
     newRequest->setPaddr(0x0);
 
     // ReadReq is not evaluted by the LDS but the Packet ctor requires this
@@ -1824,7 +1821,6 @@ ComputeUnit::LDSPort::recvTimingResp(PacketPtr packet)
     GPUDynInstPtr gpuDynInst = senderState->getMemInst();
 
     delete packet->senderState;
-    delete packet->req;
     delete packet;
 
     computeUnit->localMemoryPipe.getLMRespFIFO().push(gpuDynInst);

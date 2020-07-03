@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/x86/isa.hh"
@@ -107,13 +105,33 @@ ISA::clear()
 {
     // Blank everything. 0 might not be an appropriate value for some things,
     // but it is for most.
-    memset(regVal, 0, NumMiscRegs * sizeof(MiscReg));
+    memset(regVal, 0, NumMiscRegs * sizeof(RegVal));
+
+    // If some state should be non-zero after a reset, set those values here.
+    regVal[MISCREG_CR0] = 0x0000000060000010ULL;
+
+    regVal[MISCREG_MTRRCAP] = 0x0508;
+
+    regVal[MISCREG_MCG_CAP] = 0x104;
+
+    regVal[MISCREG_PAT] = 0x0007040600070406ULL;
+
+    regVal[MISCREG_SYSCFG] = 0x20601;
+
+    regVal[MISCREG_TOP_MEM] = 0x4000000;
+
     regVal[MISCREG_DR6] = (mask(8) << 4) | (mask(16) << 16);
     regVal[MISCREG_DR7] = 1 << 10;
+
+    LocalApicBase lApicBase = 0;
+    lApicBase.base = 0xFEE00000 >> 12;
+    lApicBase.enable = 1;
+    // The "bsp" bit will be set when this register is read, since then we'll
+    // have a ThreadContext to check the contextId from.
+    regVal[MISCREG_APIC_BASE] = lApicBase;
 }
 
-ISA::ISA(Params *p)
-    : SimObject(p)
+ISA::ISA(Params *p) : BaseISA(p)
 {
     clear();
 }
@@ -124,7 +142,7 @@ ISA::params() const
     return dynamic_cast<const Params *>(_params);
 }
 
-MiscReg
+RegVal
 ISA::readMiscRegNoEffect(int miscReg) const
 {
     // Make sure we're not dealing with an illegal control register.
@@ -135,7 +153,7 @@ ISA::readMiscRegNoEffect(int miscReg) const
     return regVal[miscReg];
 }
 
-MiscReg
+RegVal
 ISA::readMiscReg(int miscReg, ThreadContext * tc)
 {
     if (miscReg == MISCREG_TSC) {
@@ -143,63 +161,66 @@ ISA::readMiscReg(int miscReg, ThreadContext * tc)
     }
 
     if (miscReg == MISCREG_FSW) {
-        MiscReg fsw = regVal[MISCREG_FSW];
-        MiscReg top = regVal[MISCREG_X87_TOP];
-        return (fsw & (~(7ULL << 11))) + (top << 11);
+        RegVal fsw = regVal[MISCREG_FSW];
+        RegVal top = regVal[MISCREG_X87_TOP];
+        return insertBits(fsw, 13, 11, top);
+    }
+
+    if (miscReg == MISCREG_APIC_BASE) {
+        LocalApicBase base = regVal[MISCREG_APIC_BASE];
+        base.bsp = (tc->contextId() == 0);
+        return base;
     }
 
     return readMiscRegNoEffect(miscReg);
 }
 
 void
-ISA::setMiscRegNoEffect(int miscReg, MiscReg val)
+ISA::setMiscRegNoEffect(int miscReg, RegVal val)
 {
     // Make sure we're not dealing with an illegal control register.
     // Instructions should filter out these indexes, and nothing else should
     // attempt to write to them directly.
     assert(isValidMiscReg(miscReg));
 
-    HandyM5Reg m5Reg = readMiscRegNoEffect(MISCREG_M5_REG);
+    HandyM5Reg m5Reg = regVal[MISCREG_M5_REG];
+    int reg_width = 64;
     switch (miscReg) {
-      case MISCREG_FSW:
-        val &= (1ULL << 16) - 1;
-        regVal[miscReg] = val;
-        miscReg = MISCREG_X87_TOP;
-        val <<= 11;
       case MISCREG_X87_TOP:
-        val &= (1ULL << 3) - 1;
+        reg_width = 3;
         break;
       case MISCREG_FTW:
-        val &= (1ULL << 8) - 1;
+        reg_width = 8;
         break;
+      case MISCREG_FSW:
       case MISCREG_FCW:
       case MISCREG_FOP:
-        val &= (1ULL << 16) - 1;
+        reg_width = 16;
         break;
       case MISCREG_MXCSR:
-        val &= (1ULL << 32) - 1;
+        reg_width = 32;
         break;
       case MISCREG_FISEG:
       case MISCREG_FOSEG:
         if (m5Reg.submode != SixtyFourBitMode)
-            val &= (1ULL << 16) - 1;
+            reg_width = 16;
         break;
       case MISCREG_FIOFF:
       case MISCREG_FOOFF:
         if (m5Reg.submode != SixtyFourBitMode)
-            val &= (1ULL << 32) - 1;
+            reg_width = 32;
         break;
       default:
         break;
     }
 
-    regVal[miscReg] = val;
+    regVal[miscReg] = val & mask(reg_width);
 }
 
 void
-ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
+ISA::setMiscReg(int miscReg, RegVal val, ThreadContext * tc)
 {
-    MiscReg newVal = val;
+    RegVal newVal = val;
     switch(miscReg)
     {
       case MISCREG_CR0:
@@ -219,8 +240,8 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
                 }
             }
             if (toggled.pg) {
-                tc->getITBPtr()->flushAll();
-                tc->getDTBPtr()->flushAll();
+                dynamic_cast<TLB *>(tc->getITBPtr())->flushAll();
+                dynamic_cast<TLB *>(tc->getDTBPtr())->flushAll();
             }
             //This must always be 1.
             newCR0.et = 1;
@@ -236,15 +257,15 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
       case MISCREG_CR2:
         break;
       case MISCREG_CR3:
-        tc->getITBPtr()->flushNonGlobal();
-        tc->getDTBPtr()->flushNonGlobal();
+        dynamic_cast<TLB *>(tc->getITBPtr())->flushNonGlobal();
+        dynamic_cast<TLB *>(tc->getDTBPtr())->flushNonGlobal();
         break;
       case MISCREG_CR4:
         {
             CR4 toggled = regVal[miscReg] ^ val;
             if (toggled.pae || toggled.pse || toggled.pge) {
-                tc->getITBPtr()->flushAll();
-                tc->getDTBPtr()->flushAll();
+                dynamic_cast<TLB *>(tc->getITBPtr())->flushAll();
+                dynamic_cast<TLB *>(tc->getDTBPtr())->flushAll();
             }
         }
         break;
@@ -319,7 +340,7 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
         break;
       case MISCREG_DR4:
         miscReg = MISCREG_DR6;
-        /* Fall through to have the same effects as DR6. */
+        M5_FALLTHROUGH;
       case MISCREG_DR6:
         {
             DR6 dr6 = regVal[MISCREG_DR6];
@@ -336,7 +357,7 @@ ISA::setMiscReg(int miscReg, MiscReg val, ThreadContext * tc)
         break;
       case MISCREG_DR5:
         miscReg = MISCREG_DR7;
-        /* Fall through to have the same effects as DR7. */
+        M5_FALLTHROUGH;
       case MISCREG_DR7:
         {
             DR7 dr7 = regVal[MISCREG_DR7];

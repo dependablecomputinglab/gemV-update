@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python2.7
 #
 # Copyright (c) 2014-2015 ARM Limited
 # All rights reserved
@@ -37,15 +37,12 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Nathan Binkert
-#          Andreas Sandberg
 
 import os
 import re
 import sys
 
-from file_types import *
+from .file_types import *
 
 cpp_c_headers = {
     'assert.h' : 'cassert',
@@ -158,6 +155,9 @@ class SortIncludes(object):
     includes_re = (
         ('main', '""', _include_matcher_main()),
         ('python', '<>', _include_matcher_fname("^Python\.h$")),
+        ('pybind', '""', _include_matcher_fname("^pybind11/.*\.h$",
+                                                delim='""')),
+        ('m5shared', '<>', _include_matcher_fname("^gem5/")),
         ('c', '<>', _include_matcher_fname("^.*\.h$")),
         ('stl', '<>', _include_matcher_fname("^\w+$")),
         ('cc', '<>', _include_matcher_fname("^.*\.(hh|hxx|hpp|H)$")),
@@ -170,10 +170,12 @@ class SortIncludes(object):
 
     block_order = (
         ('python', ),
+        ('pybind', ),
         ('main', ),
         ('c', ),
         ('stl', ),
         ('cc', ),
+        ('m5shared', ),
         ('m5header', ),
         ('swig0', 'swig1', 'swig2', 'swig3', ),
         )
@@ -312,6 +314,6 @@ if __name__ == '__main__':
         for filename,language in find_files(base, languages=opts.languages,
                 file_ignore=opts.file_ignore, dir_ignore=opts.dir_ignore):
             if opts.dry_run:
-                print "%s: %s" % (filename, language)
+                print("{}: {}".format(filename, language))
             else:
                 update_file(filename, filename, language, SortIncludes())

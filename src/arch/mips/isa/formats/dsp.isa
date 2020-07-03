@@ -25,9 +25,6 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Authors: Korey Sewell
-//          Brett Miller
 
 ////////////////////////////////////////////////////////////////////
 //
@@ -64,7 +61,8 @@ output header {{
 
 // Dsp instruction class execute method template.
 def template DspExecute {{
-        Fault %(class_name)s::execute(CPU_EXEC_CONTEXT *xc, Trace::InstRecord *traceData) const
+        Fault %(class_name)s::execute(
+            ExecContext *xc, Trace::InstRecord *traceData) const
         {
                 Fault fault = NoFault;
 
@@ -97,7 +95,8 @@ def template DspExecute {{
 
 // DspHiLo instruction class execute method template.
 def template DspHiLoExecute {{
-        Fault %(class_name)s::execute(CPU_EXEC_CONTEXT *xc, Trace::InstRecord *traceData) const
+        Fault %(class_name)s::execute(
+            ExecContext *xc, Trace::InstRecord *traceData) const
         {
                 Fault fault = NoFault;
 
@@ -136,9 +135,9 @@ def template DspHiLoExecute {{
 }};
 
 output header {{
-    bool isDspEnabled(%(CPU_exec_context)s *xc);
+    bool isDspEnabled(ExecContext *xc);
 
-    bool isDspPresent(%(CPU_exec_context)s *xc);
+    bool isDspPresent(ExecContext *xc);
 }};
 
 //Outputs to decoder.cc
@@ -147,7 +146,7 @@ output decoder {{
 
 output exec {{
     bool
-    isDspEnabled(CPU_EXEC_CONTEXT *xc)
+    isDspEnabled(ExecContext *xc)
     {
         return !FullSystem || bits(xc->readMiscReg(MISCREG_STATUS), 24);
     }
@@ -155,7 +154,7 @@ output exec {{
 
 output exec {{
     bool
-    isDspPresent(CPU_EXEC_CONTEXT *xc)
+    isDspPresent(ExecContext *xc)
     {
         return !FullSystem || bits(xc->readMiscReg(MISCREG_CONFIG3), 10);
     }

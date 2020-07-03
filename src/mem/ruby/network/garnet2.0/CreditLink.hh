@@ -25,14 +25,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Niket Agarwal
- *          Tushar Krishna
  */
 
 
-#ifndef __MEM_RUBY_NETWORK_GARNET_CREDIT_LINK_HH__
-#define __MEM_RUBY_NETWORK_GARNET_CREDIT_LINK_HH__
+#ifndef __MEM_RUBY_NETWORK_GARNET2_0_CREDITLINK_HH__
+#define __MEM_RUBY_NETWORK_GARNET2_0_CREDITLINK_HH__
 
 #include "mem/ruby/network/garnet2.0/NetworkLink.hh"
 #include "params/CreditLink.hh"
@@ -44,4 +41,4 @@ class CreditLink : public NetworkLink
     CreditLink(const Params *p) : NetworkLink(p) {}
 };
 
-#endif // __MEM_RUBY_NETWORK_GARNET_CREDIT_LINK_HH__
+#endif // __MEM_RUBY_NETWORK_GARNET2_0_CREDITLINK_HH__

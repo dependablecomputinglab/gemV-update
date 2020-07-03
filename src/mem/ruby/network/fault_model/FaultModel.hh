@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Konstantinos Aisopos
  */
 
 /*
@@ -37,8 +35,8 @@
  * Proceedings of the 48th Design Automation Conference (DAC'11)
  */
 
-#ifndef __MEM_RUBY_NETWORK_FAULT_MODEL_HH__
-#define __MEM_RUBY_NETWORK_FAULT_MODEL_HH__
+#ifndef __MEM_RUBY_NETWORK_FAULT_MODEL_FAULTMODEL_HH__
+#define __MEM_RUBY_NETWORK_FAULT_MODEL_FAULTMODEL_HH__
 
 // tool limitations and fixed inputs
 #define MAX_VCs 40
@@ -138,4 +136,4 @@ class FaultModel : public SimObject
     std::vector <int> temperature_weights;
 };
 
-#endif //  __MEM_RUBY_NETWORK_FAULT_MODEL_HH__
+#endif //__MEM_RUBY_NETWORK_FAULT_MODEL_FAULTMODEL_HH__

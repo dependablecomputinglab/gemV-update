@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 ARM Limited
+ * Copyright (c) 2012, 2015, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,14 +33,13 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #include "arch/arm/kvm/base_cpu.hh"
 
 #include <linux/kvm.h>
 
+#include "arch/arm/interrupts.hh"
 #include "debug/KvmInt.hh"
 #include "params/BaseArmKvmCPU.hh"
 
@@ -88,19 +87,31 @@ BaseArmKvmCPU::startup()
 Tick
 BaseArmKvmCPU::kvmRun(Tick ticks)
 {
-    bool simFIQ(interrupts[0]->checkRaw(INT_FIQ));
-    bool simIRQ(interrupts[0]->checkRaw(INT_IRQ));
+    auto interrupt = static_cast<ArmISA::Interrupts *>(interrupts[0]);
+    const bool simFIQ(interrupt->checkRaw(INT_FIQ));
+    const bool simIRQ(interrupt->checkRaw(INT_IRQ));
 
-    if (fiqAsserted != simFIQ) {
-        fiqAsserted = simFIQ;
-        DPRINTF(KvmInt, "KVM: Update FIQ state: %i\n", simFIQ);
-        vm.setIRQLine(INTERRUPT_VCPU_FIQ(vcpuID), simFIQ);
+    if (!vm.hasKernelIRQChip()) {
+        if (fiqAsserted != simFIQ) {
+            DPRINTF(KvmInt, "KVM: Update FIQ state: %i\n", simFIQ);
+            vm.setIRQLine(INTERRUPT_VCPU_FIQ(vcpuID), simFIQ);
+        }
+        if (irqAsserted != simIRQ) {
+            DPRINTF(KvmInt, "KVM: Update IRQ state: %i\n", simIRQ);
+            vm.setIRQLine(INTERRUPT_VCPU_IRQ(vcpuID), simIRQ);
+        }
+    } else {
+        warn_if(simFIQ && !fiqAsserted,
+                "FIQ raised by the simulated interrupt controller " \
+                "despite in-kernel GIC emulation. This is probably a bug.");
+
+        warn_if(simIRQ && !irqAsserted,
+                "IRQ raised by the simulated interrupt controller " \
+                "despite in-kernel GIC emulation. This is probably a bug.");
     }
-    if (irqAsserted != simIRQ) {
-        irqAsserted = simIRQ;
-        DPRINTF(KvmInt, "KVM: Update IRQ state: %i\n", simIRQ);
-        vm.setIRQLine(INTERRUPT_VCPU_IRQ(vcpuID), simIRQ);
-    }
+
+    irqAsserted = simIRQ;
+    fiqAsserted = simFIQ;
 
     return BaseKvmCPU::kvmRun(ticks);
 }

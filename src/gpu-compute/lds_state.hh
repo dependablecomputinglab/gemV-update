@@ -14,9 +14,9 @@
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software
- * without specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -29,8 +29,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * Author: John Kalamatianos, Joe Gross
  */
 
 #ifndef __LDS_STATE_HH__
@@ -45,9 +43,9 @@
 
 #include "enums/MemType.hh"
 #include "gpu-compute/misc.hh"
-#include "mem/mem_object.hh"
 #include "mem/port.hh"
 #include "params/LdsState.hh"
+#include "sim/clocked_object.hh"
 
 class ComputeUnit;
 
@@ -107,7 +105,7 @@ class LdsChunk
 
 // Local Data Share (LDS) State per Wavefront (contents of the LDS region
 // allocated to the WorkGroup of this Wavefront)
-class LdsState: public MemObject
+class LdsState: public ClockedObject
 {
   protected:
 
@@ -435,8 +433,8 @@ class LdsState: public MemObject
         return range;
     }
 
-    virtual BaseSlavePort &
-    getSlavePort(const std::string& if_name, PortID idx)
+    Port &
+    getPort(const std::string &if_name, PortID idx)
     {
         if (if_name == "cuPort") {
             // TODO need to set name dynamically at this point?

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 #
 # Copyright (c) 2016 ARM Limited
 # All rights reserved
@@ -34,8 +34,8 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
+
+from __future__ import print_function
 
 import subprocess
 from threading import Timer
@@ -187,4 +187,4 @@ if __name__ == "__main__":
     ignore_list.rules.append(FileIgnoreList.simple("bar.txt"))
     assert "bar.txt" in ignore_list
 
-    print "SUCCESS!"
+    print("SUCCESS!")

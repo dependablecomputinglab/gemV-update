@@ -33,9 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Giacomo Gabrielli
  */
 
 #ifndef __ARCH_ARM_STAGE2_LOOKUP_HH__
@@ -68,13 +65,13 @@ class Stage2LookUp : public BaseTLB::Translation
     bool                    functional;
     TLB::ArmTranslationType tranType;
     TlbEntry                *stage2Te;
-    Request                 req;
+    RequestPtr              req;
     Fault                   fault;
     bool                    complete;
     bool                    selfDelete;
 
   public:
-    Stage2LookUp(TLB *s1Tlb, TLB *s2Tlb, TlbEntry s1Te, RequestPtr _req,
+    Stage2LookUp(TLB *s1Tlb, TLB *s2Tlb, TlbEntry s1Te, const RequestPtr &_req,
         TLB::Translation *_transState, BaseTLB::Mode _mode, bool _timing,
         bool _functional, TLB::ArmTranslationType _tranType) :
         stage1Tlb(s1Tlb), stage2Tlb(s2Tlb), stage1Te(s1Te), s1Req(_req),
@@ -82,13 +79,14 @@ class Stage2LookUp : public BaseTLB::Translation
         functional(_functional), tranType(_tranType), stage2Te(nullptr),
         fault(NoFault), complete(false), selfDelete(false)
     {
-        req.setVirt(0, s1Te.pAddr(s1Req->getVaddr()), s1Req->getSize(),
-                    s1Req->getFlags(), s1Req->masterId(), 0);
+        req = std::make_shared<Request>();
+        req->setVirt(s1Te.pAddr(s1Req->getVaddr()), s1Req->getSize(),
+                     s1Req->getFlags(), s1Req->masterId(), 0);
     }
 
     Fault getTe(ThreadContext *tc, TlbEntry *destTe);
 
-    void mergeTe(RequestPtr req, BaseTLB::Mode mode);
+    void mergeTe(const RequestPtr &req, BaseTLB::Mode mode);
 
     void setSelfDelete() { selfDelete = true; }
 
@@ -96,7 +94,7 @@ class Stage2LookUp : public BaseTLB::Translation
 
     void markDelayed() {}
 
-    void finish(const Fault &fault, RequestPtr req, ThreadContext *tc,
+    void finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
                 BaseTLB::Mode mode);
 };
 

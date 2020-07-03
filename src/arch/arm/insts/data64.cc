@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/arm/insts/data64.hh"
@@ -43,7 +41,8 @@ namespace ArmISA
 {
 
 std::string
-DataXImmOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataXImmOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printDataInst(ss, true, false, /*XXX not really s*/ false, dest, op1,
@@ -52,17 +51,19 @@ DataXImmOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
 }
 
 std::string
-DataXImmOnlyOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataXImmOnlyOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", #%d", imm);
     return ss.str();
 }
 
 std::string
-DataXSRegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataXSRegOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printDataInst(ss, false, true, /*XXX not really s*/ false, dest, op1,
@@ -71,7 +72,8 @@ DataXSRegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
 }
 
 std::string
-DataXERegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataXERegOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printDataInst(ss, false, true, /*XXX not really s*/ false, dest, op1,
@@ -80,89 +82,95 @@ DataXERegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
 }
 
 std::string
-DataX1RegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX1RegOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     return ss.str();
 }
 
 std::string
-DataX1RegImmOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX1RegImmOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", #%d", imm);
     return ss.str();
 }
 
 std::string
-DataX1Reg2ImmOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX1Reg2ImmOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", #%d, #%d", imm1, imm2);
     return ss.str();
 }
 
 std::string
-DataX2RegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX2RegOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
-    printReg(ss, op2);
+    printIntReg(ss, op2);
     return ss.str();
 }
 
 std::string
-DataX2RegImmOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX2RegImmOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
-    printReg(ss, op2);
+    printIntReg(ss, op2);
     ccprintf(ss, ", #%d", imm);
     return ss.str();
 }
 
 std::string
-DataX3RegOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DataX3RegOp::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
-    printReg(ss, op2);
+    printIntReg(ss, op2);
     ccprintf(ss, ", ");
-    printReg(ss, op3);
+    printIntReg(ss, op3);
     return ss.str();
 }
 
 std::string
 DataXCondCompImmOp::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", #%d, #%d", imm, defCc);
     ccprintf(ss, ", ");
     printCondition(ss, condCode, true);
@@ -171,13 +179,13 @@ DataXCondCompImmOp::generateDisassembly(
 
 std::string
 DataXCondCompRegOp::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
-    printReg(ss, op2);
+    printIntReg(ss, op2);
     ccprintf(ss, ", #%d", defCc);
     ccprintf(ss, ", ");
     printCondition(ss, condCode, true);
@@ -186,15 +194,15 @@ DataXCondCompRegOp::generateDisassembly(
 
 std::string
 DataXCondSelOp::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, dest);
+    printIntReg(ss, dest);
     ccprintf(ss, ", ");
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
-    printReg(ss, op2);
+    printIntReg(ss, op2);
     ccprintf(ss, ", ");
     printCondition(ss, condCode, true);
     return ss.str();

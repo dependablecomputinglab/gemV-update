@@ -36,10 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Erik Hallnor
- *          Andreas Sandberg
- *          Andreas Hansson
  */
 
 /** @file
@@ -48,7 +44,9 @@
 
 #include "mem/cache/write_queue.hh"
 
-using namespace std;
+#include <cassert>
+
+#include "mem/cache/write_queue_entry.hh"
 
 WriteQueue::WriteQueue(const std::string &_label,
                        int num_entries, int reserve)

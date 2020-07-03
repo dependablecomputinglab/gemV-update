@@ -33,9 +33,10 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Brad Beckmann
  */
+
+#ifndef __MEM_RUBY_COMMON_BOOLVEC_HH__
+#define __MEM_RUBY_COMMON_BOOLVEC_HH__
 
 #include <ostream>
 #include <vector>
@@ -43,3 +44,5 @@
 typedef std::vector<bool> BoolVec;
 
 std::ostream& operator<<(std::ostream& os, const std::vector<bool>& myvector);
+
+#endif //__MEM_RUBY_COMMON_BOOLVEC_HH__

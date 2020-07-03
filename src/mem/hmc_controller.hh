@@ -36,8 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Erfan Azarkhish
  */
 
 
@@ -46,8 +44,8 @@
  * HMCController declaration
  */
 
-#ifndef __HMC_CONTROLLER__
-#define __HMC_CONTROLLER__
+#ifndef __MEM_HMC_CONTROLLER_HH__
+#define __MEM_HMC_CONTROLLER_HH__
 
 #include "mem/noncoherent_xbar.hh"
 #include "mem/port.hh"
@@ -100,4 +98,4 @@ private:
     int rotate_counter();
 };
 
-#endif //__HMC_CONTROLLER__
+#endif //__MEM_HMC_CONTROLLER_HH__

@@ -23,18 +23,16 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Gabe Black
 
 from m5.params import *
 from m5.proxy import *
 
-from Device import IsaFake
-from Platform import Platform
-from SouthBridge import SouthBridge
-from Terminal import Terminal
-from Uart import Uart8250
-from PciHost import GenericPciHost
+from m5.objects.Device import IsaFake
+from m5.objects.Platform import Platform
+from m5.objects.SouthBridge import SouthBridge
+from m5.objects.Terminal import Terminal
+from m5.objects.Uart import Uart8250
+from m5.objects.PciHost import GenericPciHost
 
 def x86IOAddress(port):
     IO_address_space_base = 0x8000000000000000
@@ -65,7 +63,7 @@ class Pc(Platform):
     # Serial port and terminal
     com_1 = Uart8250()
     com_1.pio_addr = x86IOAddress(0x3f8)
-    com_1.terminal = Terminal()
+    com_1.device = Terminal()
 
     # Devices to catch access to non-existant serial ports.
     fake_com_2 = IsaFake(pio_addr=x86IOAddress(0x2f8), pio_size=8)

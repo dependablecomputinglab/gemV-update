@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2014 ARM Limited
+ * Copyright (c) 2012, 2014, 2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -37,11 +37,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Steve Reinhardt
- *          Lisa Hsu
- *          Nathan Binkert
- *          Rick Strong
  */
 
 #ifndef __SYSTEM_HH__
@@ -53,34 +48,28 @@
 #include <vector>
 
 #include "arch/isa_traits.hh"
+#include "base/loader/memory_image.hh"
 #include "base/loader/symtab.hh"
 #include "base/statistics.hh"
 #include "config/the_isa.hh"
+#include "cpu/pc_event.hh"
 #include "enums/MemoryMode.hh"
-#include "mem/mem_object.hh"
+#include "mem/mem_master.hh"
 #include "mem/physical.hh"
 #include "mem/port.hh"
 #include "mem/port_proxy.hh"
 #include "params/System.hh"
 #include "sim/futex_map.hh"
+#include "sim/redirect_path.hh"
 #include "sim/se_signal.hh"
-
-/**
- * To avoid linking errors with LTO, only include the header if we
- * actually have the definition.
- */
-#if THE_ISA != NULL_ISA
-#include "cpu/pc_event.hh"
-
-#endif
+#include "sim/sim_object.hh"
+#include "sim/workload.hh"
 
 class BaseRemoteGDB;
-class GDBListener;
 class KvmVM;
-class ObjectFile;
 class ThreadContext;
 
-class System : public MemObject
+class System : public SimObject, public PCEventScope
 {
   private:
 
@@ -96,7 +85,7 @@ class System : public MemObject
         /**
          * Create a system port with a name and an owner.
          */
-        SystemPort(const std::string &_name, MemObject *_owner)
+        SystemPort(const std::string &_name, SimObject *_owner)
             : MasterPort(_name, _owner)
         { }
         bool recvTimingResp(PacketPtr pkt) override
@@ -105,15 +94,13 @@ class System : public MemObject
         { panic("SystemPort does not expect retry!\n"); }
     };
 
+    std::list<PCEvent *> liveEvents;
     SystemPort _systemPort;
 
   public:
 
-    /**
-     * After all objects have been created and all ports are
-     * connected, check that the system port is connected.
-     */
     void init() override;
+    void startup() override;
 
     /**
      * Get a reference to the system port that can be used by
@@ -128,8 +115,8 @@ class System : public MemObject
     /**
      * Additional function to return the Port of a memory object.
      */
-    BaseMasterPort& getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID) override;
+    Port &getPort(const std::string &if_name,
+                  PortID idx=InvalidPortID) override;
 
     /** @{ */
     /**
@@ -192,24 +179,23 @@ class System : public MemObject
      */
     unsigned int cacheLineSize() const { return _cacheLineSize; }
 
-#if THE_ISA != NULL_ISA
-    PCEventQueue pcEventQueue;
-#endif
-
     std::vector<ThreadContext *> threadContexts;
-    int _numContexts;
-    const bool multiThread;
+    ThreadContext *findFreeContext();
 
-    ThreadContext *getThreadContext(ContextID tid)
+    ThreadContext *
+    getThreadContext(ContextID tid) const
     {
         return threadContexts[tid];
     }
 
-    int numContexts()
-    {
-        assert(_numContexts == (int)threadContexts.size());
-        return _numContexts;
-    }
+    const bool multiThread;
+
+    using SimObject::schedule;
+
+    bool schedule(PCEvent *event) override;
+    bool remove(PCEvent *event) override;
+
+    unsigned numContexts() const { return threadContexts.size(); }
 
     /** Return number of running (non-halted) thread contexts in
      * system.  These threads could be Active or Suspended. */
@@ -223,35 +209,8 @@ class System : public MemObject
      * boot.*/
     PortProxy physProxy;
 
-    /** kernel symbol table */
-    SymbolTable *kernelSymtab;
-
-    /** Object pointer for the kernel code */
-    ObjectFile *kernel;
-
-    /** Beginning of kernel code */
-    Addr kernelStart;
-
-    /** End of kernel code */
-    Addr kernelEnd;
-
-    /** Entry point in the kernel to start at */
-    Addr kernelEntry;
-
-    /** Mask that should be anded for binary/symbol loading.
-     * This allows one two different OS requirements for the same ISA to be
-     * handled.  Some OSes are compiled for a virtual address and need to be
-     * loaded into physical memory that starts at address 0, while other
-     * bare metal tools generate images that start at address 0.
-     */
-    Addr loadAddrMask;
-
-    /** Offset that should be used for binary/symbol loading.
-     * This further allows more flexibility than the loadAddrMask allows alone
-     * in loading kernels and similar. The loadAddrOffset is applied after the
-     * loadAddrMask.
-     */
-    Addr loadAddrOffset;
+    /** OS kernel */
+    Workload *workload = nullptr;
 
   public:
     /**
@@ -261,6 +220,9 @@ class System : public MemObject
     KvmVM* getKvmVM() {
         return kvmVM;
     }
+
+    /** Verify gem5 configuration will support KVM emulation */
+    bool validKvmEnvironment() const;
 
     /** Get a pointer to access the physical memory of the system */
     PhysicalMemory& getPhysMem() { return physmem; }
@@ -284,6 +246,19 @@ class System : public MemObject
      * Get the architecture.
      */
     Arch getArch() const { return Arch::TheISA; }
+
+    /**
+     * Get the guest byte order.
+     */
+    ByteOrder
+    getGuestByteOrder() const
+    {
+#if THE_ISA != NULL_ISA
+        return TheISA::GuestByteOrder;
+#else
+        panic("The NULL ISA has no endianness.");
+#endif
+    }
 
      /**
      * Get the page bytes for the ISA.
@@ -320,31 +295,96 @@ class System : public MemObject
      * It's used to uniquely id any master in the system by name for things
      * like cache statistics.
      */
-    std::vector<std::string> masterIds;
+    std::vector<MasterInfo> masters;
 
     ThermalModel * thermalModel;
 
+  protected:
+    /**
+     * Strips off the system name from a master name
+     */
+    std::string stripSystemName(const std::string& master_name) const;
+
   public:
 
-    /** Request an id used to create a request object in the system. All objects
+    /**
+     * Request an id used to create a request object in the system. All objects
      * that intend to issues requests into the memory system must request an id
      * in the init() phase of startup. All master ids must be fixed by the
      * regStats() phase that immediately precedes it. This allows objects in
      * the memory system to understand how many masters may exist and
      * appropriately name the bins of their per-master stats before the stats
-     * are finalized
+     * are finalized.
+     *
+     * Registers a MasterID:
+     * This method takes two parameters, one of which is optional.
+     * The first one is the master object, and it is compulsory; in case
+     * a object has multiple (sub)masters, a second parameter must be
+     * provided and it contains the name of the submaster. The method will
+     * create a master's name by concatenating the SimObject name with the
+     * eventual submaster string, separated by a dot.
+     *
+     * As an example:
+     * For a cpu having two masters: a data master and an instruction master,
+     * the method must be called twice:
+     *
+     * instMasterId = getMasterId(cpu, "inst");
+     * dataMasterId = getMasterId(cpu, "data");
+     *
+     * and the masters' names will be:
+     * - "cpu.inst"
+     * - "cpu.data"
+     *
+     * @param master SimObject related to the master
+     * @param submaster String containing the submaster's name
+     * @return the master's ID.
      */
-    MasterID getMasterId(std::string req_name);
+    MasterID getMasterId(const SimObject* master,
+                         std::string submaster = std::string());
 
-    /** Get the name of an object for a given request id.
+    /**
+     * Registers a GLOBAL MasterID, which is a MasterID not related
+     * to any particular SimObject; since no SimObject is passed,
+     * the master gets registered by providing the full master name.
+     *
+     * @param masterName full name of the master
+     * @return the master's ID.
+     */
+    MasterID getGlobalMasterId(const std::string& master_name);
+
+    /**
+     * Get the name of an object for a given request id.
      */
     std::string getMasterName(MasterID master_id);
 
+    /**
+     * Looks up the MasterID for a given SimObject
+     * returns an invalid MasterID (invldMasterId) if not found.
+     */
+    MasterID lookupMasterId(const SimObject* obj) const;
+
+    /**
+     * Looks up the MasterID for a given object name string
+     * returns an invalid MasterID (invldMasterId) if not found.
+     */
+    MasterID lookupMasterId(const std::string& name) const;
+
     /** Get the number of masters registered in the system */
-    MasterID maxMasters()
-    {
-        return masterIds.size();
-    }
+    MasterID maxMasters() { return masters.size(); }
+
+  protected:
+    /** helper function for getMasterId */
+    MasterID _getMasterId(const SimObject* master,
+                          const std::string& master_name);
+
+    /**
+     * Helper function for constructing the full (sub)master name
+     * by providing the root master and the relative submaster name.
+     */
+    std::string leafMasterName(const SimObject* master,
+                               const std::string& submaster);
+
+  public:
 
     void regStats() override;
     /**
@@ -393,99 +433,8 @@ class System : public MemObject
 
     void workItemEnd(uint32_t tid, uint32_t workid);
 
-    /**
-     * Fix up an address used to match PCs for hooking simulator
-     * events on to target function executions.  See comment in
-     * system.cc for details.
-     */
-    virtual Addr fixFuncEventAddr(Addr addr)
-    {
-        panic("Base fixFuncEventAddr not implemented.\n");
-    }
-
-    /** @{ */
-    /**
-     * Add a function-based event to the given function, to be looked
-     * up in the specified symbol table.
-     *
-     * The ...OrPanic flavor of the method causes the simulator to
-     * panic if the symbol can't be found.
-     *
-     * @param symtab Symbol table to use for look up.
-     * @param lbl Function to hook the event to.
-     * @param desc Description to be passed to the event.
-     * @param args Arguments to be forwarded to the event constructor.
-     */
-    template <class T, typename... Args>
-    T *addFuncEvent(const SymbolTable *symtab, const char *lbl,
-                    const std::string &desc, Args... args)
-    {
-        Addr addr M5_VAR_USED = 0; // initialize only to avoid compiler warning
-
-#if THE_ISA != NULL_ISA
-        if (symtab->findAddress(lbl, addr)) {
-            T *ev = new T(&pcEventQueue, desc, fixFuncEventAddr(addr),
-                          std::forward<Args>(args)...);
-            return ev;
-        }
-#endif
-
-        return NULL;
-    }
-
-    template <class T>
-    T *addFuncEvent(const SymbolTable *symtab, const char *lbl)
-    {
-        return addFuncEvent<T>(symtab, lbl, lbl);
-    }
-
-    template <class T, typename... Args>
-    T *addFuncEventOrPanic(const SymbolTable *symtab, const char *lbl,
-                           Args... args)
-    {
-        T *e(addFuncEvent<T>(symtab, lbl, std::forward<Args>(args)...));
-        if (!e)
-            panic("Failed to find symbol '%s'", lbl);
-        return e;
-    }
-    /** @} */
-
-    /** @{ */
-    /**
-     * Add a function-based event to a kernel symbol.
-     *
-     * These functions work like their addFuncEvent() and
-     * addFuncEventOrPanic() counterparts. The only difference is that
-     * they automatically use the kernel symbol table. All arguments
-     * are forwarded to the underlying method.
-     *
-     * @see addFuncEvent()
-     * @see addFuncEventOrPanic()
-     *
-     * @param lbl Function to hook the event to.
-     * @param args Arguments to be passed to addFuncEvent
-     */
-    template <class T, typename... Args>
-    T *addKernelFuncEvent(const char *lbl, Args... args)
-    {
-        return addFuncEvent<T>(kernelSymtab, lbl,
-                               std::forward<Args>(args)...);
-    }
-
-    template <class T, typename... Args>
-    T *addKernelFuncEventOrPanic(const char *lbl, Args... args)
-    {
-        T *e(addFuncEvent<T>(kernelSymtab, lbl,
-                             std::forward<Args>(args)...));
-        if (!e)
-            panic("Failed to find kernel symbol '%s'", lbl);
-        return e;
-    }
-    /** @} */
-
   public:
     std::vector<BaseRemoteGDB *> remoteGDB;
-    std::vector<GDBListener *> gdbListen;
     bool breakpoint();
 
   public:
@@ -494,33 +443,25 @@ class System : public MemObject
   protected:
     Params *_params;
 
+    /**
+     * Range for memory-mapped m5 pseudo ops. The range will be
+     * invalid/empty if disabled.
+     */
+    const AddrRange _m5opRange;
+
   public:
     System(Params *p);
     ~System();
 
-    void initState() override;
-
     const Params *params() const { return (const Params *)_params; }
 
+    /**
+     * Range used by memory-mapped m5 pseudo-ops if enabled. Returns
+     * an invalid/empty range if disabled.
+     */
+    const AddrRange &m5opRange() const { return _m5opRange; }
+
   public:
-
-    /**
-     * Returns the address the kernel starts at.
-     * @return address the kernel starts at
-     */
-    Addr getKernelStart() const { return kernelStart; }
-
-    /**
-     * Returns the address the kernel ends at.
-     * @return address the kernel ends at
-     */
-    Addr getKernelEnd() const { return kernelEnd; }
-
-    /**
-     * Returns the address the entry point to the kernel code.
-     * @return entry point of the kernel code
-     */
-    Addr getKernelEntry() const { return kernelEntry; }
 
     /// Allocate npages contiguous unused physical pages
     /// @return Starting address of first page
@@ -537,7 +478,6 @@ class System : public MemObject
 
   public:
     Counter totalNumInsts;
-    EventQueue instEventQueue;
     std::map<std::pair<uint32_t,uint32_t>, Tick>  lastWorkItemStarted;
     std::map<uint32_t, Stats::Histogram*> workItemStats;
 
@@ -563,26 +503,10 @@ class System : public MemObject
     // receiver will delete the signal upon reception.
     std::list<BasicSignal> signalList;
 
-  protected:
-
-    /**
-     * If needed, serialize additional symbol table entries for a
-     * specific subclass of this system. Currently this is used by
-     * Alpha and MIPS.
-     *
-     * @param os stream to serialize to
-     */
-    virtual void serializeSymtab(CheckpointOut &os) const {}
-
-    /**
-     * If needed, unserialize additional symbol table entries for a
-     * specific subclass of this system.
-     *
-     * @param cp checkpoint to unserialize from
-     * @param section relevant section in the checkpoint
-     */
-    virtual void unserializeSymtab(CheckpointIn &cp) {}
-
+    // Used by syscall-emulation mode. This member contains paths which need
+    // to be redirected to the faux-filesystem (a duplicate filesystem
+    // intended to replace certain files on the host filesystem).
+    std::vector<RedirectPath*> redirectPaths;
 };
 
 void printSystems();

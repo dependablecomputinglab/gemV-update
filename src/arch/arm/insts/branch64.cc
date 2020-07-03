@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/arm/insts/branch64.hh"
@@ -71,7 +69,7 @@ BranchImmImmReg64::branchTarget(const ArmISA::PCState &branchPC) const
 
 std::string
 BranchImmCond64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false, true, condCode);
@@ -81,7 +79,7 @@ BranchImmCond64::generateDisassembly(
 
 std::string
 BranchImm64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
@@ -91,28 +89,60 @@ BranchImm64::generateDisassembly(
 
 std::string
 BranchReg64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, op1);
+    printIntReg(ss, op1);
+    return ss.str();
+}
+
+std::string
+BranchRegReg64::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    printIntReg(ss, op1);
+    ccprintf(ss, ", ");
+    printIntReg(ss, op2);
     return ss.str();
 }
 
 std::string
 BranchRet64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
     if (op1 != INTREG_X30)
-        printReg(ss, op1);
+        printIntReg(ss, op1);
+    return ss.str();
+}
+
+std::string
+BranchRetA64::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    if (op1 != INTREG_X30)
+        printIntReg(ss, op1);
     return ss.str();
 }
 
 std::string
 BranchEret64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
+{
+    std::stringstream ss;
+    printMnemonic(ss, "", false);
+    return ss.str();
+}
+
+std::string
+BranchEretA64::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
@@ -121,11 +151,11 @@ BranchEret64::generateDisassembly(
 
 std::string
 BranchImmReg64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", ");
     printTarget(ss, pc + imm, symtab);
     return ss.str();
@@ -133,11 +163,11 @@ BranchImmReg64::generateDisassembly(
 
 std::string
 BranchImmImmReg64::generateDisassembly(
-        Addr pc, const SymbolTable *symtab) const
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     std::stringstream ss;
     printMnemonic(ss, "", false);
-    printReg(ss, op1);
+    printIntReg(ss, op1);
     ccprintf(ss, ", #%#x, ", imm1);
     printTarget(ss, pc + imm2, symtab);
     return ss.str();

@@ -1,4 +1,7 @@
 /*
+ * Copyright (c) 2020 The Regents of the University of California
+ * All rights reserved
+ *
  * Copyright (c) 2002-2005 The Regents of The University of Michigan
  * All rights reserved.
  *
@@ -24,8 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 #include "base/socket.hh"
@@ -38,13 +39,24 @@
 
 #include <cerrno>
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/types.hh"
+#include "sim/byteswap.hh"
 
 using namespace std;
 
 bool ListenSocket::listeningDisabled = false;
 bool ListenSocket::anyListening = false;
+
+bool ListenSocket::bindToLoopback = false;
+
+void
+ListenSocket::cleanup()
+{
+    listeningDisabled = false;
+    anyListening = false;
+    bindToLoopback = false;
+}
 
 void
 ListenSocket::disableAll()
@@ -58,6 +70,14 @@ bool
 ListenSocket::allDisabled()
 {
     return listeningDisabled;
+}
+
+void
+ListenSocket::loopbackOnly()
+{
+    if (anyListening)
+        panic("Too late to bind to loopback, already have a listener");
+    bindToLoopback = true;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -94,7 +114,8 @@ ListenSocket::listen(int port, bool reuse)
 
     struct sockaddr_in sockaddr;
     sockaddr.sin_family = PF_INET;
-    sockaddr.sin_addr.s_addr = INADDR_ANY;
+    sockaddr.sin_addr.s_addr =
+        htobe<in_addr_t>(bindToLoopback ? INADDR_LOOPBACK : INADDR_ANY);
     sockaddr.sin_port = htons(port);
     // finally clear sin_zero
     memset(&sockaddr.sin_zero, 0, sizeof(sockaddr.sin_zero));

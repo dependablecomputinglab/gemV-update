@@ -25,11 +25,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Steve Reinhardt
- *          Jaidev Patwardhan
- *          Korey Sewell
  */
 
 #ifndef __ARCH_MIPS_TLB_HH__
@@ -41,7 +36,6 @@
 #include "arch/mips/isa_traits.hh"
 #include "arch/mips/pagetable.hh"
 #include "arch/mips/utility.hh"
-#include "arch/mips/vtophys.hh"
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/MipsTLB.hh"
@@ -104,7 +98,7 @@ class TLB : public BaseTLB
     // static helper functions... really
     static bool validVirtualAddress(Addr vaddr);
 
-    static Fault checkCacheability(RequestPtr &req);
+    static Fault checkCacheability(const RequestPtr &req);
 
     // Checkpointing
     void serialize(CheckpointOut &cp) const override;
@@ -112,19 +106,16 @@ class TLB : public BaseTLB
 
     void regStats() override;
 
-    Fault translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode);
-    void translateTiming(RequestPtr req, ThreadContext *tc,
-            Translation *translation, Mode mode);
-
-    /** Function stub for CheckerCPU compilation issues. MIPS does not
-     *  support the Checker model at the moment.
-     */
-    Fault translateFunctional(RequestPtr req, ThreadContext *tc, Mode mode);
-    Fault finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const;
-
-  private:
-    Fault translateInst(RequestPtr req, ThreadContext *tc);
-    Fault translateData(RequestPtr req, ThreadContext *tc, bool write);
+    Fault translateAtomic(
+            const RequestPtr &req, ThreadContext *tc, Mode mode) override;
+    void translateTiming(
+            const RequestPtr &req, ThreadContext *tc,
+            Translation *translation, Mode mode) override;
+    Fault translateFunctional(
+            const RequestPtr &req, ThreadContext *tc, Mode mode) override;
+    Fault finalizePhysical(
+            const RequestPtr &req,
+            ThreadContext *tc, Mode mode) const override;
 };
 
 }

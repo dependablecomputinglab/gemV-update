@@ -26,20 +26,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __MEM_RUBY_NETWORK_BASIC_LINK_HH__
-#define __MEM_RUBY_NETWORK_BASIC_LINK_HH__
+#ifndef __MEM_RUBY_NETWORK_BASICLINK_HH__
+#define __MEM_RUBY_NETWORK_BASICLINK_HH__
 
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include "mem/ruby/network/BasicRouter.hh"
+#include "mem/ruby/slicc_interface/AbstractController.hh"
 #include "params/BasicExtLink.hh"
 #include "params/BasicIntLink.hh"
 #include "params/BasicLink.hh"
-#include "mem/ruby/network/BasicRouter.hh"
-#include "mem/ruby/network/Topology.hh"
-#include "mem/ruby/slicc_interface/AbstractController.hh"
 #include "sim/sim_object.hh"
+
+class Topology;
 
 class BasicLink : public SimObject
 {
@@ -85,4 +86,4 @@ class BasicIntLink : public BasicLink
     friend class Topology;
 };
 
-#endif // __MEM_RUBY_NETWORK_BASIC_LINK_HH__
+#endif //__MEM_RUBY_NETWORK_BASICLINK_HH__

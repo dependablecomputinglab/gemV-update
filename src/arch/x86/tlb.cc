@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/x86/tlb.hh"
@@ -42,26 +40,28 @@
 #include <cstring>
 #include <memory>
 
-#include "arch/generic/mmapped_ipr.hh"
 #include "arch/x86/faults.hh"
 #include "arch/x86/insts/microldstop.hh"
 #include "arch/x86/pagetable_walker.hh"
+#include "arch/x86/pseudo_inst_abi.hh"
 #include "arch/x86/regs/misc.hh"
 #include "arch/x86/regs/msr.hh"
 #include "arch/x86/x86_traits.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
 #include "debug/TLB.hh"
+#include "mem/packet_access.hh"
 #include "mem/page_table.hh"
 #include "mem/request.hh"
 #include "sim/full_system.hh"
 #include "sim/process.hh"
+#include "sim/pseudo_inst.hh"
 
 namespace X86ISA {
 
 TLB::TLB(const Params *p)
     : BaseTLB(p), configAddress(0), size(p->size),
-      tlb(size), lruSeq(0)
+      tlb(size), lruSeq(0), m5opRange(p->system->m5opRange())
 {
     if (!size)
         fatal("TLBs must have a non-zero size.\n");
@@ -94,7 +94,7 @@ TLB::evictLRU()
 }
 
 TlbEntry *
-TLB::insert(Addr vpn, TlbEntry &entry)
+TLB::insert(Addr vpn, const TlbEntry &entry)
 {
     // If somebody beat us to it, just use that existing entry.
     TlbEntry *newEntry = trie.lookup(vpn);
@@ -169,8 +169,30 @@ TLB::demapPage(Addr va, uint64_t asn)
     }
 }
 
+namespace
+{
+
+Cycles
+localMiscRegAccess(bool read, MiscRegIndex regNum,
+                   ThreadContext *tc, PacketPtr pkt)
+{
+    if (read) {
+        RegVal data = htole(tc->readMiscReg(regNum));
+        assert(pkt->getSize() <= sizeof(RegVal));
+        pkt->setData((uint8_t *)&data);
+    } else {
+        RegVal data = htole(tc->readMiscRegNoEffect(regNum));
+        assert(pkt->getSize() <= sizeof(RegVal));
+        pkt->writeData((uint8_t *)&data);
+        tc->setMiscReg(regNum, letoh(data));
+    }
+    return Cycles(1);
+}
+
+} // anonymous namespace
+
 Fault
-TLB::translateInt(RequestPtr req, ThreadContext *tc)
+TLB::translateInt(bool read, RequestPtr req, ThreadContext *tc)
 {
     DPRINTF(TLB, "Addresses references internal memory.\n");
     Addr vaddr = req->getVaddr();
@@ -179,16 +201,19 @@ TLB::translateInt(RequestPtr req, ThreadContext *tc)
         panic("CPUID memory space not yet implemented!\n");
     } else if (prefix == IntAddrPrefixMSR) {
         vaddr = (vaddr >> 3) & ~IntAddrPrefixMask;
-        req->setFlags(Request::MMAPPED_IPR);
 
         MiscRegIndex regNum;
         if (!msrAddrToIndex(regNum, vaddr))
             return std::make_shared<GeneralProtection>(0);
 
-        //The index is multiplied by the size of a MiscReg so that
-        //any memory dependence calculations will not see these as
-        //overlapping.
-        req->setPaddr((Addr)regNum * sizeof(MiscReg));
+        req->setPaddr(req->getVaddr());
+        req->setLocalAccessor(
+            [read,regNum](ThreadContext *tc, PacketPtr pkt)
+            {
+                return localMiscRegAccess(read, regNum, tc, pkt);
+            }
+        );
+
         return NoFault;
     } else if (prefix == IntAddrPrefixIO) {
         // TODO If CPL > IOPL or in virtual mode, check the I/O permission
@@ -199,8 +224,14 @@ TLB::translateInt(RequestPtr req, ThreadContext *tc)
         // space.
         assert(!(IOPort & ~0xFFFF));
         if (IOPort == 0xCF8 && req->getSize() == 4) {
-            req->setFlags(Request::MMAPPED_IPR);
-            req->setPaddr(MISCREG_PCI_CONFIG_ADDRESS * sizeof(MiscReg));
+            req->setPaddr(req->getVaddr());
+            req->setLocalAccessor(
+                [read](ThreadContext *tc, PacketPtr pkt)
+                {
+                    return localMiscRegAccess(
+                            read, MISCREG_PCI_CONFIG_ADDRESS, tc, pkt);
+                }
+            );
         } else if ((IOPort & ~mask(2)) == 0xCFC) {
             req->setFlags(Request::UNCACHEABLE | Request::STRICT_ORDER);
             Addr configAddress =
@@ -224,23 +255,31 @@ TLB::translateInt(RequestPtr req, ThreadContext *tc)
 }
 
 Fault
-TLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
+TLB::finalizePhysical(const RequestPtr &req,
+                      ThreadContext *tc, Mode mode) const
 {
     Addr paddr = req->getPaddr();
 
-    AddrRange m5opRange(0xFFFF0000, 0xFFFFFFFF);
-
     if (m5opRange.contains(paddr)) {
-        req->setFlags(Request::MMAPPED_IPR | Request::GENERIC_IPR |
-                      Request::STRICT_ORDER);
-        req->setPaddr(GenericISA::iprAddressPseudoInst((paddr >> 8) & 0xFF,
-                                                       paddr & 0xFF));
+        req->setFlags(Request::STRICT_ORDER);
+        uint8_t func;
+        PseudoInst::decodeAddrOffset(paddr - m5opRange.start(), func);
+        req->setLocalAccessor(
+            [func, mode](ThreadContext *tc, PacketPtr pkt) -> Cycles
+            {
+                uint64_t ret;
+                PseudoInst::pseudoInst<X86PseudoInstABI>(tc, func, ret);
+                if (mode == Read)
+                    pkt->setLE(ret);
+                return Cycles(1);
+            }
+        );
     } else if (FullSystem) {
         // Check for an access to the local APIC
         LocalApicBase localApicBase =
             tc->readMiscRegNoEffect(MISCREG_APIC_BASE);
         AddrRange apicRange(localApicBase.base * PageBytes,
-                            (localApicBase.base + 1) * PageBytes - 1);
+                            (localApicBase.base + 1) * PageBytes);
 
         if (apicRange.contains(paddr)) {
             // The Intel developer's manuals say the below restrictions apply,
@@ -265,7 +304,8 @@ TLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
 }
 
 Fault
-TLB::translate(RequestPtr req, ThreadContext *tc, Translation *translation,
+TLB::translate(const RequestPtr &req,
+        ThreadContext *tc, Translation *translation,
         Mode mode, bool &delayedResponse, bool timing)
 {
     Request::Flags flags = req->getFlags();
@@ -277,7 +317,7 @@ TLB::translate(RequestPtr req, ThreadContext *tc, Translation *translation,
     // If this is true, we're dealing with a request to a non-memory address
     // space.
     if (seg == SEGMENT_REG_MS) {
-        return translateInt(req, tc);
+        return translateInt(mode == Read, req, tc);
     }
 
     Addr vaddr = req->getVaddr();
@@ -332,7 +372,20 @@ TLB::translate(RequestPtr req, ThreadContext *tc, Translation *translation,
             DPRINTF(TLB, "Paging enabled.\n");
             // The vaddr already has the segment base applied.
             TlbEntry *entry = lookup(vaddr);
+            if (mode == Read) {
+                rdAccesses++;
+            } else {
+                wrAccesses++;
+            }
             if (!entry) {
+                DPRINTF(TLB, "Handling a TLB miss for "
+                        "address %#x at pc %#x.\n",
+                        vaddr, tc->instAddr());
+                if (mode == Read) {
+                    rdMisses++;
+                } else {
+                    wrMisses++;
+                }
                 if (FullSystem) {
                     Fault fault = walker->start(tc, translation, req, mode);
                     if (timing || fault != NoFault) {
@@ -343,28 +396,20 @@ TLB::translate(RequestPtr req, ThreadContext *tc, Translation *translation,
                     entry = lookup(vaddr);
                     assert(entry);
                 } else {
-                    DPRINTF(TLB, "Handling a TLB miss for "
-                            "address %#x at pc %#x.\n",
-                            vaddr, tc->instAddr());
-
                     Process *p = tc->getProcessPtr();
-                    TlbEntry newEntry;
-                    bool success = p->pTable->lookup(vaddr, newEntry);
-                    if (!success && mode != Execute) {
-                        // Check if we just need to grow the stack.
-                        if (p->fixupStackFault(vaddr)) {
-                            // If we did, lookup the entry for the new page.
-                            success = p->pTable->lookup(vaddr, newEntry);
-                        }
-                    }
-                    if (!success) {
+                    const EmulationPageTable::Entry *pte =
+                        p->pTable->lookup(vaddr);
+                    if (!pte) {
                         return std::make_shared<PageFault>(vaddr, true, mode,
                                                            true, false);
                     } else {
                         Addr alignedVaddr = p->pTable->pageAlign(vaddr);
                         DPRINTF(TLB, "Mapping %#x to %#x\n", alignedVaddr,
-                                newEntry.pageStart());
-                        entry = insert(alignedVaddr, newEntry);
+                                pte->paddr);
+                        entry = insert(alignedVaddr, TlbEntry(
+                                p->pTable->pid(), alignedVaddr, pte->paddr,
+                                pte->flags & EmulationPageTable::Uncacheable,
+                                pte->flags & EmulationPageTable::ReadOnly));
                     }
                     DPRINTF(TLB, "Miss was serviced.\n");
                 }
@@ -413,14 +458,48 @@ TLB::translate(RequestPtr req, ThreadContext *tc, Translation *translation,
 }
 
 Fault
-TLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
 {
     bool delayedResponse;
     return TLB::translate(req, tc, NULL, mode, delayedResponse, false);
 }
 
+Fault
+TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
+{
+    unsigned logBytes;
+    const Addr vaddr = req->getVaddr();
+    Addr addr = vaddr;
+    Addr paddr = 0;
+    if (FullSystem) {
+        Fault fault = walker->startFunctional(tc, addr, logBytes, mode);
+        if (fault != NoFault)
+            return fault;
+        paddr = insertBits(addr, logBytes - 1, 0, vaddr);
+    } else {
+        Process *process = tc->getProcessPtr();
+        const auto *pte = process->pTable->lookup(vaddr);
+
+        if (!pte && mode != Execute) {
+            // Check if we just need to grow the stack.
+            if (process->fixupFault(vaddr)) {
+                // If we did, lookup the entry for the new page.
+                pte = process->pTable->lookup(vaddr);
+            }
+        }
+
+        if (!pte)
+            return std::make_shared<PageFault>(vaddr, true, mode, true, false);
+
+        paddr = pte->paddr | process->pTable->pageOffset(vaddr);
+    }
+    DPRINTF(TLB, "Translated (functional) %#x -> %#x.\n", vaddr, paddr);
+    req->setPaddr(paddr);
+    return NoFault;
+}
+
 void
-TLB::translateTiming(RequestPtr req, ThreadContext *tc,
+TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
         Translation *translation, Mode mode)
 {
     bool delayedResponse;
@@ -429,19 +508,37 @@ TLB::translateTiming(RequestPtr req, ThreadContext *tc,
         TLB::translate(req, tc, translation, mode, delayedResponse, true);
     if (!delayedResponse)
         translation->finish(fault, req, tc, mode);
-}
-
-Fault
-TLB::translateFunctional(RequestPtr req, ThreadContext *tc, Mode mode)
-{
-    panic("Not implemented\n");
-    return NoFault;
+    else
+        translation->markDelayed();
 }
 
 Walker *
 TLB::getWalker()
 {
     return walker;
+}
+
+void
+TLB::regStats()
+{
+    using namespace Stats;
+    BaseTLB::regStats();
+    rdAccesses
+        .name(name() + ".rdAccesses")
+        .desc("TLB accesses on read requests");
+
+    wrAccesses
+        .name(name() + ".wrAccesses")
+        .desc("TLB accesses on write requests");
+
+    rdMisses
+        .name(name() + ".rdMisses")
+        .desc("TLB misses on read requests");
+
+    wrMisses
+        .name(name() + ".wrMisses")
+        .desc("TLB misses on write requests");
+
 }
 
 void
@@ -481,10 +578,10 @@ TLB::unserialize(CheckpointIn &cp)
     }
 }
 
-BaseMasterPort *
-TLB::getMasterPort()
+Port *
+TLB::getTableWalkerPort()
 {
-    return &walker->getMasterPort("port");
+    return &walker->getPort("port");
 }
 
 } // namespace X86ISA

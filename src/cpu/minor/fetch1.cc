@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Bardsley
  */
 
 #include "cpu/minor/fetch1.hh"
@@ -168,8 +166,8 @@ Fetch1::fetchLine(ThreadID tid)
         "%s addr: 0x%x pc: %s line_offset: %d request_size: %d\n",
         request_id, aligned_pc, thread.pc, line_offset, request_size);
 
-    request->request.setContext(cpu.threads[tid]->getTC()->contextId());
-    request->request.setVirt(0 /* asid */,
+    request->request->setContext(cpu.threads[tid]->getTC()->contextId());
+    request->request->setVirt(
         aligned_pc, request_size, Request::INST_FETCH, cpu.instMasterId(),
         /* I've no idea why we need the PC, but give it */
         thread.pc.instAddr());
@@ -187,7 +185,7 @@ Fetch1::fetchLine(ThreadID tid)
      *  through finish/markDelayed on this request as it bears
      *  the Translation interface */
     cpu.threads[request->id.threadId]->itb->translateTiming(
-        &request->request,
+        request->request,
         cpu.getContext(request->id.threadId),
         request, BaseTLB::Execute);
 
@@ -196,15 +194,7 @@ Fetch1::fetchLine(ThreadID tid)
     /* Step the PC for the next line onto the line aligned next address.
      * Note that as instructions can span lines, this PC is only a
      * reliable 'new' PC if the next line has a new stream sequence number. */
-#if THE_ISA == ALPHA_ISA
-    /* Restore the low bits of the PC used as address space flags */
-    Addr pc_low_bits = thread.pc.instAddr() &
-        ((Addr) (1 << sizeof(TheISA::MachInst)) - 1);
-
-    thread.pc.set(aligned_pc + request_size + pc_low_bits);
-#else
     thread.pc.set(aligned_pc + request_size);
-#endif
 }
 
 std::ostream &
@@ -228,7 +218,7 @@ void
 Fetch1::FetchRequest::makePacket()
 {
     /* Make the necessary packet for a memory transaction */
-    packet = new Packet(&request, MemCmd::ReadReq);
+    packet = new Packet(request, MemCmd::ReadReq);
     packet->allocate();
 
     /* This FetchRequest becomes SenderState to allow the response to be
@@ -237,7 +227,7 @@ Fetch1::FetchRequest::makePacket()
 }
 
 void
-Fetch1::FetchRequest::finish(const Fault &fault_, RequestPtr request_,
+Fetch1::FetchRequest::finish(const Fault &fault_, const RequestPtr &request_,
                              ThreadContext *tc, BaseTLB::Mode mode)
 {
     fault = fault_;
@@ -258,8 +248,9 @@ Fetch1::handleTLBResponse(FetchRequestPtr response)
         DPRINTF(Fetch, "Fault in address ITLB translation: %s, "
             "paddr: 0x%x, vaddr: 0x%x\n",
             response->fault->name(),
-            (response->request.hasPaddr() ? response->request.getPaddr() : 0),
-            response->request.getVaddr());
+            (response->request->hasPaddr() ?
+                response->request->getPaddr() : 0),
+            response->request->getVaddr());
 
         if (DTRACE(MinorTrace))
             minorTraceResponseLine(name(), response);
@@ -397,18 +388,18 @@ void
 Fetch1::minorTraceResponseLine(const std::string &name,
     Fetch1::FetchRequestPtr response) const
 {
-    Request &request M5_VAR_USED = response->request;
+    const RequestPtr &request M5_VAR_USED = response->request;
 
     if (response->packet && response->packet->isError()) {
         MINORLINE(this, "id=F;%s vaddr=0x%x fault=\"error packet\"\n",
-            response->id, request.getVaddr());
+            response->id, request->getVaddr());
     } else if (response->fault != NoFault) {
         MINORLINE(this, "id=F;%s vaddr=0x%x fault=\"%s\"\n",
-            response->id, request.getVaddr(), response->fault->name());
+            response->id, request->getVaddr(), response->fault->name());
     } else {
         MINORLINE(this, "id=%s size=%d vaddr=0x%x paddr=0x%x\n",
-            response->id, request.getSize(),
-            request.getVaddr(), request.getPaddr());
+            response->id, request->getSize(),
+            request->getVaddr(), request->getPaddr());
     }
 }
 
@@ -550,7 +541,7 @@ Fetch1::processResponse(Fetch1::FetchRequestPtr response,
     line.pc = response->pc;
     /* Set the lineBase, which is a sizeof(MachInst) aligned address <=
      *  pc.instAddr() */
-    line.lineBaseAddr = response->request.getVaddr();
+    line.lineBaseAddr = response->request->getVaddr();
 
     if (response->fault != NoFault) {
         /* Stop fetching if there was a fault */

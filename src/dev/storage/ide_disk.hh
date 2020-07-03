@@ -36,8 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Schultz
  */
 
 /** @file
@@ -241,6 +239,8 @@ class IdeDisk : public SimObject
     DmaState_t dmaState;
     /** Dma transaction is a read */
     bool dmaRead;
+    /** Size of OS pages. */
+    Addr pageBytes;
     /** PRD table base address */
     uint32_t curPrdAddr;
     /** PRD entry */
@@ -282,9 +282,12 @@ class IdeDisk : public SimObject
      * Set the controller for this device
      * @param c The IDE controller
      */
-    void setController(IdeController *c) {
-        if (ctrl) panic("Cannot change the controller once set!\n");
+    void
+    setController(IdeController *c, Addr page_bytes)
+    {
+        panic_if(ctrl, "Cannot change the controller once set!\n");
         ctrl = c;
+        pageBytes = page_bytes;
     }
 
     // Device register read/write
@@ -306,34 +309,28 @@ class IdeDisk : public SimObject
 
     // DMA stuff
     void doDmaTransfer();
-    friend class EventWrapper<IdeDisk, &IdeDisk::doDmaTransfer>;
-    EventWrapper<IdeDisk, &IdeDisk::doDmaTransfer> dmaTransferEvent;
+    EventFunctionWrapper dmaTransferEvent;
 
     void doDmaDataRead();
 
     void doDmaRead();
     ChunkGenerator *dmaReadCG;
-    friend class EventWrapper<IdeDisk, &IdeDisk::doDmaRead>;
-    EventWrapper<IdeDisk, &IdeDisk::doDmaRead> dmaReadWaitEvent;
+    EventFunctionWrapper dmaReadWaitEvent;
 
     void doDmaDataWrite();
 
     void doDmaWrite();
     ChunkGenerator *dmaWriteCG;
-    friend class EventWrapper<IdeDisk, &IdeDisk::doDmaWrite>;
-    EventWrapper<IdeDisk, &IdeDisk::doDmaWrite> dmaWriteWaitEvent;
+    EventFunctionWrapper dmaWriteWaitEvent;
 
     void dmaPrdReadDone();
-    friend class EventWrapper<IdeDisk, &IdeDisk::dmaPrdReadDone>;
-    EventWrapper<IdeDisk, &IdeDisk::dmaPrdReadDone> dmaPrdReadEvent;
+    EventFunctionWrapper dmaPrdReadEvent;
 
     void dmaReadDone();
-    friend class EventWrapper<IdeDisk, &IdeDisk::dmaReadDone>;
-    EventWrapper<IdeDisk, &IdeDisk::dmaReadDone> dmaReadEvent;
+    EventFunctionWrapper dmaReadEvent;
 
     void dmaWriteDone();
-    friend class EventWrapper<IdeDisk, &IdeDisk::dmaWriteDone>;
-    EventWrapper<IdeDisk, &IdeDisk::dmaWriteDone> dmaWriteEvent;
+    EventFunctionWrapper dmaWriteEvent;
 
     // Disk image read/write
     void readDisk(uint32_t sector, uint8_t *data);

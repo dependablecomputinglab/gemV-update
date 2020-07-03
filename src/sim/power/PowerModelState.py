@@ -32,10 +32,8 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: David Guillen Fandos
 
-from m5.SimObject import SimObject
+from m5.SimObject import *
 from m5.params import *
 
 # Represents a power model for a simobj
@@ -45,11 +43,10 @@ class PowerModelState(SimObject):
     abstract = True
     cxx_class = 'PowerModelState'
 
-    @classmethod
-    def export_methods(cls, code):
-        code('''
-      double getDynamicPower() const;
-      double getStaticPower() const;
-''')
+    cxx_exports = [
+        PyBindMethod("getDynamicPower"),
+        PyBindMethod("getStaticPower"),
+    ]
+
 
 

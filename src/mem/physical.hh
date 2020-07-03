@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Hansson
  */
 
 #ifndef __MEM_PHYSICAL_HH__
@@ -118,11 +116,7 @@ class PhysicalMemory : public Serializable
     std::string _name;
 
     // Global address map
-    AddrRangeMap<AbstractMemory*> addrMap;
-
-    // a mutable cache for the last address map iterator that matched
-    // an address
-    mutable AddrRangeMap<AbstractMemory*>::const_iterator rangeCache;
+    AddrRangeMap<AbstractMemory*, 1> addrMap;
 
     // All address-mapped memories
     std::vector<AbstractMemory*> memories;

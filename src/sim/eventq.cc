@@ -26,10 +26,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Steve Reinhardt
- *          Nathan Binkert
- *          Steve Raasch
  */
 
 #include <cassert>
@@ -38,7 +34,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "cpu/smt.hh"
 #include "debug/Checkpoint.hh"
@@ -85,11 +81,7 @@ Event::~Event()
 const std::string
 Event::name() const
 {
-#ifndef NDEBUG
-    return csprintf("Event_%d", instance);
-#else
-    return csprintf("Event_%x", (uintptr_t)this);
-#endif
+    return csprintf("Event_%s", instanceString());
 }
 
 
@@ -224,10 +216,11 @@ EventQueue::serviceOne()
     if (!event->squashed()) {
         // forward current cycle to the time when this event occurs.
         setCurTick(event->when());
-
+        if (DTRACE(Event))
+            event->trace("executed");
         event->process();
         if (event->isExitEvent()) {
-            assert(!event->flags.isSet(Event::AutoDelete) ||
+            assert(!event->flags.isSet(Event::Managed) ||
                    !event->flags.isSet(Event::IsMainQueue)); // would be silly
             return event;
         }
@@ -235,8 +228,7 @@ EventQueue::serviceOne()
         event->flags.clear(Event::Squashed);
     }
 
-    if (event->flags.isSet(Event::AutoDelete) && !event->scheduled())
-        delete event;
+    event->release();
 
     return NULL;
 }
@@ -393,7 +385,18 @@ Event::trace(const char *action)
     // more informative message in the trace, override this method on
     // the particular subclass where you have the information that
     // needs to be printed.
-    DPRINTFN("%s event %s @ %d\n", description(), action, when());
+    DPRINTF_UNCONDITIONAL(Event, "%s %s %s @ %d\n",
+            description(), instanceString(), action, when());
+}
+
+const std::string
+Event::instanceString() const
+{
+#ifndef NDEBUG
+    return csprintf("%d", instance);
+#else
+    return csprintf("%#x", (uintptr_t)this);
+#endif
 }
 
 void

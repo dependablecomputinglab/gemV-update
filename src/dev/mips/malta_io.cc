@@ -24,10 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Andrew Schultz
- *          Miguel Serrano
  */
 
 /** @file
@@ -44,7 +40,6 @@
 
 #include "base/time.hh"
 #include "base/trace.hh"
-#include "config/the_isa.hh"
 #include "debug/Malta.hh"
 #include "dev/mips/malta.hh"
 #include "dev/mips/malta_cchip.hh"
@@ -57,7 +52,6 @@
 #include "sim/system.hh"
 
 using namespace std;
-using namespace TheISA;
 
 MaltaIO::RTC::RTC(const string &name, const MaltaIOParams *p)
     : MC146818(p->malta, name, p->time, p->year_is_bcd, p->frequency),

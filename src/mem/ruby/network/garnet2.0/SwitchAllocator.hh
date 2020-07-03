@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2008 Princeton University
+ * Copyright (c) 2020 Inria
  * Copyright (c) 2016 Georgia Institute of Technology
+ * Copyright (c) 2008 Princeton University
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,14 +26,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Niket Agarwal
- *          Tushar Krishna
  */
 
 
-#ifndef __MEM_RUBY_NETWORK_GARNET_SWITCH_ALLOCATOR_HH__
-#define __MEM_RUBY_NETWORK_GARNET_SWITCH_ALLOCATOR_HH__
+#ifndef __MEM_RUBY_NETWORK_GARNET2_0_SWITCHALLOCATOR_HH__
+#define __MEM_RUBY_NETWORK_GARNET2_0_SWITCHALLOCATOR_HH__
 
 #include <iostream>
 #include <vector>
@@ -70,6 +68,8 @@ class SwitchAllocator : public Consumer
         return m_output_arbiter_activity;
     }
 
+    void resetStats();
+
   private:
     int m_num_inports, m_num_outports;
     int m_num_vcs, m_vc_per_vnet;
@@ -81,8 +81,6 @@ class SwitchAllocator : public Consumer
     std::vector<int> m_round_robin_inport;
     std::vector<std::vector<bool>> m_port_requests;
     std::vector<std::vector<int>> m_vc_winners; // a list for each outport
-    std::vector<InputUnit *> m_input_unit;
-    std::vector<OutputUnit *> m_output_unit;
 };
 
-#endif // __MEM_RUBY_NETWORK_GARNET_SWITCH_ALLOCATOR_HH__
+#endif // __MEM_RUBY_NETWORK_GARNET2_0_SWITCHALLOCATOR_HH__

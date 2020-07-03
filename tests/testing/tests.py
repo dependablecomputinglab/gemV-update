@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 #
-# Copyright (c) 2016 ARM Limited
+# Copyright (c) 2016-2017 ARM Limited
 # All rights reserved
 #
 # The license below extends only to copyright in the software and shall
@@ -34,13 +34,18 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
 
 from abc import ABCMeta, abstractmethod
 import os
 from collections import namedtuple
+
+from six import add_metaclass
+
+import sys
+sys.path.append(os.path.dirname(__file__))
+
 from units import *
+from helpers import FileIgnoreList
 from results import TestResult
 import shutil
 
@@ -102,6 +107,7 @@ arch_configs = {
         'realview-minor-dual',
         'realview-switcheroo-atomic',
         'realview-switcheroo-timing',
+        'realview-switcheroo-noncaching-timing',
         'realview-switcheroo-o3',
         'realview-switcheroo-full',
         'realview64-simple-atomic',
@@ -125,7 +131,7 @@ arch_configs = {
         't1000-simple-x86',
     ),
 
-    ("timing", None) : (
+    ("x86", None) : (
         'pc-simple-atomic',
         'pc-simple-timing',
         'pc-o3-timing',
@@ -156,14 +162,23 @@ generic_configs = (
     'memtest-filter',
     'tgen-simple-mem',
     'tgen-dram-ctrl',
+    'dram-lowp',
 
     'learning-gem5-p1-simple',
     'learning-gem5-p1-two-level',
 )
 
+default_ruby_protocol = {
+    "arm" : "MOESI_CMP_directory",
+}
+
+def get_default_protocol(arch):
+    return default_ruby_protocol.get(arch, 'MI_example')
+
 all_categories = ("quick", "long")
 all_modes = ("fs", "se")
 
+@add_metaclass(ABCMeta)
 class Test(object):
     """Test case base class.
 
@@ -173,8 +188,6 @@ class Test(object):
     the run phase fails.
 
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self, name):
         self.test_name = name
@@ -337,8 +350,11 @@ def get_tests(isa,
     else:
         configs += generic_configs
 
-    if ruby_protocol == 'MI_example':
-        configs += [ "%s-ruby" % (c, ) for c in configs ]
+    if ruby_protocol == get_default_protocol(isa):
+        if ruby_protocol == 'MI_example':
+            configs += [ "%s-ruby" % (c, ) for c in configs ]
+        else:
+            configs += [ "%s-ruby-%s" % (c, ruby_protocol) for c in configs ]
     elif ruby_protocol is not None:
         # Override generic ISA configs when using Ruby (excluding
         # MI_example which is included in all ISAs by default). This

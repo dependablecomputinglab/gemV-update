@@ -27,12 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Steve Reinhardt
- *          Jaidev Patwardhan
- *          Stephen Hines
- *          Timothy M. Jones
  */
 
 #include "arch/power/tlb.hh"
@@ -145,7 +139,7 @@ TLB::probeEntry(Addr vpn,uint8_t asn) const
 }
 
 inline Fault
-TLB::checkCacheability(RequestPtr &req)
+TLB::checkCacheability(const RequestPtr &req)
 {
     Addr VAddrUncacheable = 0xA0000000;
     if ((req->getVaddr() & VAddrUncacheable) == VAddrUncacheable) {
@@ -279,7 +273,7 @@ TLB::regStats()
 }
 
 Fault
-TLB::translateInst(RequestPtr req, ThreadContext *tc)
+TLB::translateInst(const RequestPtr &req, ThreadContext *tc)
 {
     // Instruction accesses must be word-aligned
     if (req->getVaddr() & 0x3) {
@@ -288,32 +282,20 @@ TLB::translateInst(RequestPtr req, ThreadContext *tc)
         return std::make_shared<AlignmentFault>();
     }
 
-     Process * p = tc->getProcessPtr();
-
-     Fault fault = p->pTable->translate(req);
-    if (fault != NoFault)
-        return fault;
-
-    return NoFault;
+    return tc->getProcessPtr()->pTable->translate(req);
 }
 
 Fault
-TLB::translateData(RequestPtr req, ThreadContext *tc, bool write)
+TLB::translateData(const RequestPtr &req, ThreadContext *tc, bool write)
 {
-    Process * p = tc->getProcessPtr();
-
-    Fault fault = p->pTable->translate(req);
-    if (fault != NoFault)
-        return fault;
-
-    return NoFault;
+    return tc->getProcessPtr()->pTable->translate(req);
 }
 
 Fault
-TLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode)
+TLB::translateAtomic(const RequestPtr &req, ThreadContext *tc, Mode mode)
 {
-    if (FullSystem)
-        fatal("translate atomic not yet implemented in full system mode.\n");
+    panic_if(FullSystem,
+            "translateAtomic not yet implemented for full system.");
 
     if (mode == Execute)
         return translateInst(req, tc);
@@ -321,8 +303,16 @@ TLB::translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode)
         return translateData(req, tc, mode == Write);
 }
 
+Fault
+TLB::translateFunctional(const RequestPtr &req, ThreadContext *tc, Mode mode)
+{
+    panic_if(FullSystem,
+            "translateFunctional not implemented for full system.");
+    return tc->getProcessPtr()->pTable->translate(req);
+}
+
 void
-TLB::translateTiming(RequestPtr req, ThreadContext *tc,
+TLB::translateTiming(const RequestPtr &req, ThreadContext *tc,
                      Translation *translation, Mode mode)
 {
     assert(translation);
@@ -330,14 +320,8 @@ TLB::translateTiming(RequestPtr req, ThreadContext *tc,
 }
 
 Fault
-TLB::translateFunctional(RequestPtr req, ThreadContext *tc, Mode mode)
-{
-    panic("Not implemented\n");
-    return NoFault;
-}
-
-Fault
-TLB::finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const
+TLB::finalizePhysical(const RequestPtr &req,
+                      ThreadContext *tc, Mode mode) const
 {
     return NoFault;
 }

@@ -32,10 +32,8 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: David Guillen Fandos
 
-from m5.SimObject import SimObject
+from m5.SimObject import *
 from m5.params import *
 
 # Represents a group of simobj which produce heat
@@ -43,11 +41,9 @@ class ThermalDomain(SimObject):
     type = 'ThermalDomain'
     cxx_header = "sim/power/thermal_domain.hh"
 
-    @classmethod
-    def export_methods(cls, code):
-        code('''
-      void setNode(ThermalNode * node);
-''')
+    cxx_exports = [
+        PyBindMethod("setNode"),
+    ]
 
     # Static temperature which may change over time
     initial_temperature = Param.Float(25.0, "Initial temperature")

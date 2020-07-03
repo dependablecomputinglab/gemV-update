@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 ARM Limited
+ * Copyright (c) 2012-2014, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Bardsley
  */
 
 #include "cpu/minor/cpu.hh"
@@ -108,17 +106,6 @@ MinorCPU::init()
 
         tc->initMemProxies(tc);
     }
-
-    /* Initialise CPUs (== threads in the ISA) */
-    if (FullSystem && !params()->switched_out) {
-        for (ThreadID thread_id = 0; thread_id < threads.size(); thread_id++)
-        {
-            ThreadContext *tc = getContext(thread_id);
-
-            /* Initialize CPU, including PC */
-            TheISA::initCPU(tc, cpuId());
-        }
-    }
 }
 
 /** Stats interface from SimObject (by way of BaseCPU) */
@@ -156,15 +143,6 @@ MinorCPU::unserialize(CheckpointIn &cp)
     BaseCPU::unserialize(cp);
 }
 
-Addr
-MinorCPU::dbg_vtophys(Addr addr)
-{
-    /* Note that this gives you the translation for thread 0 */
-    panic("No implementation for vtophy\n");
-
-    return 0;
-}
-
 void
 MinorCPU::wakeup(ThreadID tid)
 {
@@ -183,9 +161,6 @@ MinorCPU::startup()
 
     BaseCPU::startup();
 
-    for (auto i = threads.begin(); i != threads.end(); i ++)
-        (*i)->startup();
-
     for (ThreadID tid = 0; tid < numThreads; tid++) {
         threads[tid]->startup();
         pipeline->wakeupFetch(tid);
@@ -195,6 +170,9 @@ MinorCPU::startup()
 DrainState
 MinorCPU::drain()
 {
+    // Deschedule any power gating event (if any)
+    deschedulePowerGatingEvent();
+
     if (switchedOut()) {
         DPRINTF(Drain, "Minor CPU switched out, draining not needed.\n");
         return DrainState::Drained;
@@ -240,10 +218,14 @@ MinorCPU::drainResume()
             "'timing' mode.\n");
     }
 
-    for (ThreadID tid = 0; tid < numThreads; tid++)
+    for (ThreadID tid = 0; tid < numThreads; tid++){
         wakeup(tid);
+    }
 
     pipeline->drainResume();
+
+    // Reschedule any power gating event (if any)
+    schedulePowerGatingEvent();
 }
 
 void
@@ -317,12 +299,14 @@ MinorCPUParams::create()
     return new MinorCPU(this);
 }
 
-MasterPort &MinorCPU::getInstPort()
+Port &
+MinorCPU::getInstPort()
 {
     return pipeline->getInstPort();
 }
 
-MasterPort &MinorCPU::getDataPort()
+Port &
+MinorCPU::getDataPort()
 {
     return pipeline->getDataPort();
 }

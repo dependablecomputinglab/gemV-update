@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Hansson
  */
 
 /**
@@ -45,10 +43,12 @@
 #ifndef __MEM_CACHE_WRITE_QUEUE_HH__
 #define __MEM_CACHE_WRITE_QUEUE_HH__
 
-#include <vector>
+#include <string>
 
+#include "base/types.hh"
 #include "mem/cache/queue.hh"
 #include "mem/cache/write_queue_entry.hh"
+#include "mem/packet.hh"
 
 /**
  * A write queue for all eviction packets, i.e. writebacks and clean

@@ -1,4 +1,5 @@
 # Copyright (c) 2012-2013, 2015-2016 ARM Limited
+# Copyright (c) 2020 Barkhausen Institut
 # All rights reserved
 #
 # The license below extends only to copyright in the software and shall
@@ -35,15 +36,17 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Lisa Hsu
 
 # Configure the M5 cache hierarchy config in one place
 #
 
+from __future__ import print_function
+from __future__ import absolute_import
+
 import m5
 from m5.objects import *
-from Caches import *
+from common.Caches import *
+from common import ObjectList
 
 def config_cache(options, system):
     if options.cache_prot == "parity_block":
@@ -62,27 +65,37 @@ def config_cache(options, system):
     else:
         vul_anal = 0
     if options.external_memory_system and (options.caches or options.l2cache):
-        print "External caches and internal caches are exclusive options.\n"
+        print("External caches and internal caches are exclusive options.\n")
         sys.exit(1)
 
     if options.external_memory_system:
         ExternalCache = ExternalCacheFactory(options.external_memory_system)
 
-    if options.cpu_type == "arm_detailed":
+    if options.cpu_type == "O3_ARM_v7a_3":
         try:
-            from O3_ARM_v7a import *
+            import cores.arm.O3_ARM_v7a as core
         except:
-            print "arm_detailed is unavailable. Did you compile the O3 model?"
+            print("O3_ARM_v7a_3 is unavailable. Did you compile the O3 model?")
             sys.exit(1)
 
         dcache_class, icache_class, l2_cache_class, walk_cache_class = \
-            O3_ARM_v7a_DCache, O3_ARM_v7a_ICache, O3_ARM_v7aL2, \
-            O3_ARM_v7aWalkCache
+            core.O3_ARM_v7a_DCache, core.O3_ARM_v7a_ICache, \
+            core.O3_ARM_v7aL2, \
+            core.O3_ARM_v7aWalkCache
+    elif options.cpu_type == "HPI":
+        try:
+            import cores.arm.HPI as core
+        except:
+            print("HPI is unavailable.")
+            sys.exit(1)
+
+        dcache_class, icache_class, l2_cache_class, walk_cache_class = \
+            core.HPI_DCache, core.HPI_ICache, core.HPI_L2, core.HPI_WalkCache
     else:
         dcache_class, icache_class, l2_cache_class, walk_cache_class = \
             L1_DCache, L1_ICache, L2Cache, None
 
-        if buildEnv['TARGET_ISA'] == 'x86':
+        if buildEnv['TARGET_ISA'] in ['x86', 'riscv']:
             walk_cache_class = PageTableWalkerCache
 
     # Set the cache line size of the system
@@ -108,11 +121,19 @@ def config_cache(options, system):
         system.tol2bus = L2XBar(clk_domain = system.cpu_clk_domain)
         system.l2.cpu_side = system.tol2bus.master
         system.l2.mem_side = system.membus.slave
+        if options.l2_hwp_type:
+            hwpClass = ObjectList.hwp_list.get(options.l2_hwp_type)
+            if system.l2.prefetcher != "Null":
+                print("Warning: l2-hwp-type is set (", hwpClass, "), but",
+                      "the current l2 has a default Hardware Prefetcher",
+                      "of type", type(system.l2.prefetcher), ", using the",
+                      "specified by the flag option.")
+            system.l2.prefetcher = hwpClass()
 
     if options.memchecker:
         system.memchecker = MemChecker()
 
-    for i in xrange(options.num_cpus):
+    for i in range(options.num_cpus):
         if options.caches:
             icache = icache_class(size=options.l1i_size,
                                   assoc=options.l1i_assoc,
@@ -147,6 +168,24 @@ def config_cache(options, system):
                 # Let CPU connect to monitors
                 dcache = dcache_mon
 
+            if options.l1d_hwp_type:
+                hwpClass = ObjectList.hwp_list.get(options.l1d_hwp_type)
+                if dcache.prefetcher != m5.params.NULL:
+                    print("Warning: l1d-hwp-type is set (", hwpClass, "), but",
+                          "the current l1d has a default Hardware Prefetcher",
+                          "of type", type(dcache.prefetcher), ", using the",
+                          "specified by the flag option.")
+                dcache.prefetcher = hwpClass()
+
+            if options.l1i_hwp_type:
+                hwpClass = ObjectList.hwp_list.get(options.l1i_hwp_type)
+                if icache.prefetcher != m5.params.NULL:
+                    print("Warning: l1i-hwp-type is set (", hwpClass, "), but",
+                          "the current l1i has a default Hardware Prefetcher",
+                          "of type", type(icache.prefetcher), ", using the",
+                          "specified by the flag option.")
+                icache.prefetcher = hwpClass()
+
             # When connecting the caches, the clock is also inherited
             # from the CPU in question
             system.cpu[i].addPrivateSplitL1Caches(icache, dcache,
@@ -164,7 +203,7 @@ def config_cache(options, system):
             # on these names.  For simplicity, we would advise configuring
             # it to use this naming scheme; if this isn't possible, change
             # the names below.
-            if buildEnv['TARGET_ISA'] in ['x86', 'arm']:
+            if buildEnv['TARGET_ISA'] in ['x86', 'arm', 'riscv']:
                 system.cpu[i].addPrivateSplitL1Caches(
                         ExternalCache("cpu%d.icache" % i),
                         ExternalCache("cpu%d.dcache" % i),

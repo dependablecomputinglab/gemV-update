@@ -34,8 +34,6 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Authors: Gabe Black
 
 def template DataXImmDeclare {{
 class %(class_name)s : public %(base_class)s
@@ -44,7 +42,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                 IntRegIndex _op1, uint64_t _imm);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -68,7 +66,7 @@ class %(class_name)s : public %(base_class)s
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                 IntRegIndex _op1, IntRegIndex _op2,
                 int32_t _shiftAmt, ArmShiftType _shiftType);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -94,7 +92,7 @@ class %(class_name)s : public %(base_class)s
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                 IntRegIndex _op1, IntRegIndex _op2,
                 ArmExtendType _extendType, int32_t _shiftAmt);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -119,7 +117,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                        IntRegIndex _op1);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -140,7 +138,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                        IntRegIndex _op1, IntRegIndex _op2);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -163,7 +161,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                        IntRegIndex _op1, IntRegIndex _op2, uint64_t _imm);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -187,7 +185,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                        IntRegIndex _op1, IntRegIndex _op2, IntRegIndex _op3);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -211,7 +209,7 @@ class %(class_name)s : public %(base_class)s
         // Constructor
         %(class_name)s(ExtMachInst machInst, IntRegIndex _op1,
                        uint64_t _imm, ConditionCode _condCode, uint8_t _defCc);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -236,7 +234,7 @@ class %(class_name)s : public %(base_class)s
         %(class_name)s(ExtMachInst machInst, IntRegIndex _op1,
                        IntRegIndex _op2, ConditionCode _condCode,
                        uint8_t _defCc);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 
@@ -261,7 +259,7 @@ class %(class_name)s : public %(base_class)s
         %(class_name)s(ExtMachInst machInst, IntRegIndex _dest,
                        IntRegIndex _op1, IntRegIndex _op2,
                        ConditionCode _condCode);
-        %(BasicExecDeclare)s
+        Fault execute(ExecContext *, Trace::InstRecord *) const override;
 };
 }};
 

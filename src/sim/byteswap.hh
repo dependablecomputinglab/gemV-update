@@ -24,10 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
- *          Ali Saidi
- *          Nathan Binkert
  */
 
 //The purpose of this file is to provide endainness conversion utility
@@ -37,7 +33,7 @@
 #ifndef __SIM_BYTE_SWAP_HH__
 #define __SIM_BYTE_SWAP_HH__
 
-#include "base/bigint.hh"
+#include "base/logging.hh"
 #include "base/types.hh"
 
 // This lets us figure out what the byte order of the host system is
@@ -123,20 +119,13 @@ inline T swap_byte(T x) {
         panic("Can't byte-swap values larger than 64 bits");
 }
 
-template<>
-inline Twin64_t swap_byte<Twin64_t>(Twin64_t x)
+template <typename T, size_t N>
+inline std::array<T, N>
+swap_byte(std::array<T, N> a)
 {
-    x.a = swap_byte(x.a);
-    x.b = swap_byte(x.b);
-    return x;
-}
-
-template<>
-inline Twin32_t swap_byte<Twin32_t>(Twin32_t x)
-{
-    x.a = swap_byte(x.a);
-    x.b = swap_byte(x.b);
-    return x;
+    for (T &v: a)
+        v = swap_byte(v);
+    return a;
 }
 
 //The conversion functions with fixed endianness on both ends don't need to
@@ -162,37 +151,18 @@ template <typename T> inline T betoh(T value) {return swap_byte(value);}
         #error Invalid Endianess
 #endif
 
-namespace BigEndianGuest
+template <typename T>
+inline T htog(T value, ByteOrder guest_byte_order)
 {
-    const ByteOrder GuestByteOrder = BigEndianByteOrder;
-    template <typename T>
-    inline T gtole(T value) {return betole(value);}
-    template <typename T>
-    inline T letog(T value) {return letobe(value);}
-    template <typename T>
-    inline T gtobe(T value) {return value;}
-    template <typename T>
-    inline T betog(T value) {return value;}
-    template <typename T>
-    inline T htog(T value) {return htobe(value);}
-    template <typename T>
-    inline T gtoh(T value) {return betoh(value);}
+    return guest_byte_order == BigEndianByteOrder ?
+        htobe(value) : htole(value);
 }
 
-namespace LittleEndianGuest
+template <typename T>
+inline T gtoh(T value, ByteOrder guest_byte_order)
 {
-    const ByteOrder GuestByteOrder = LittleEndianByteOrder;
-    template <typename T>
-    inline T gtole(T value) {return value;}
-    template <typename T>
-    inline T letog(T value) {return value;}
-    template <typename T>
-    inline T gtobe(T value) {return letobe(value);}
-    template <typename T>
-    inline T betog(T value) {return betole(value);}
-    template <typename T>
-    inline T htog(T value) {return htole(value);}
-    template <typename T>
-    inline T gtoh(T value) {return letoh(value);}
+    return guest_byte_order == BigEndianByteOrder ?
+        betoh(value) : letoh(value);
 }
+
 #endif // __SIM_BYTE_SWAP_HH__

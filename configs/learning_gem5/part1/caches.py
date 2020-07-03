@@ -24,8 +24,6 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Jason Power
 
 """ Caches with options for a simple gem5 configuration script
 
@@ -34,7 +32,14 @@ gem5 configuration script. It uses the SimpleOpts wrapper to set up command
 line options from each individual class.
 """
 
+from __future__ import print_function
+from __future__ import absolute_import
+
+import m5
 from m5.objects import Cache
+
+# Add the common scripts to our path
+m5.util.addToPath('../../')
 
 from common import SimpleOpts
 

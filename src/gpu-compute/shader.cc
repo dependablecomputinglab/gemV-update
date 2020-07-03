@@ -14,9 +14,9 @@
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. Neither the name of the copyright holder nor the names of its contributors
- * may be used to endorse or promote products derived from this software
- * without specific prior written permission.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
@@ -29,8 +29,6 @@
  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
- *
- * Author: Steve Reinhardt
  */
 
 #include "gpu-compute/shader.hh"
@@ -50,14 +48,17 @@
 #include "mem/ruby/system/RubySystem.hh"
 #include "sim/sim_exit.hh"
 
-Shader::Shader(const Params *p) : ClockedObject(p),
-    clock(p->clk_domain->clockPeriod()), cpuThread(nullptr), gpuTc(nullptr),
-    cpuPointer(p->cpu_pointer), tickEvent(this), timingSim(p->timing),
-    hsail_mode(SIMT), impl_kern_boundary_sync(p->impl_kern_boundary_sync),
-    separate_acquire_release(p->separate_acquire_release), coissue_return(1),
-    trace_vgpr_all(1), n_cu((p->CUs).size()), n_wf(p->n_wf),
-    globalMemSize(p->globalmem), nextSchedCu(0), sa_n(0), tick_cnt(0),
-    box_tick_cnt(0), start_tick_cnt(0)
+Shader::Shader(const Params *p)
+    : ClockedObject(p), clock(p->clk_domain->clockPeriod()),
+      cpuThread(nullptr), gpuTc(nullptr), cpuPointer(p->cpu_pointer),
+      tickEvent([this]{ processTick(); }, "Shader tick",
+                false, Event::CPU_Tick_Pri),
+      timingSim(p->timing), hsail_mode(SIMT),
+      impl_kern_boundary_sync(p->impl_kern_boundary_sync),
+      separate_acquire_release(p->separate_acquire_release), coissue_return(1),
+      trace_vgpr_all(1), n_cu((p->CUs).size()), n_wf(p->n_wf),
+      globalMemSize(p->globalmem), nextSchedCu(0), sa_n(0), tick_cnt(0),
+      box_tick_cnt(0), start_tick_cnt(0)
 {
 
     cuList.resize(n_cu);
@@ -223,7 +224,7 @@ Shader::handshake(GpuDispatcher *_dispatcher)
 }
 
 void
-Shader::doFunctionalAccess(RequestPtr req, MemCmd cmd, void *data,
+Shader::doFunctionalAccess(const RequestPtr &req, MemCmd cmd, void *data,
                            bool suppress_func_errors, int cu_id)
 {
     int block_size = cuList.at(cu_id)->cacheLineSize();
@@ -317,25 +318,14 @@ Shader::ScheduleAdd(uint32_t *val,Tick when,int x)
     ++sa_n;
 }
 
-Shader::TickEvent::TickEvent(Shader *_shader)
-    : Event(CPU_Tick_Pri), shader(_shader)
-{
-}
-
 
 void
-Shader::TickEvent::process()
+Shader::processTick()
 {
-    if (shader->busy()) {
-        shader->exec();
-        shader->schedule(this, curTick() + shader->ticks(1));
+    if (busy()) {
+        exec();
+        schedule(tickEvent, curTick() + ticks(1));
     }
-}
-
-const char*
-Shader::TickEvent::description() const
-{
-    return "Shader tick";
 }
 
 void
@@ -346,12 +336,13 @@ Shader::AccessMem(uint64_t address, void *ptr, uint32_t size, int cu_id,
 
     for (ChunkGenerator gen(address, size, cuList.at(cu_id)->cacheLineSize());
          !gen.done(); gen.next()) {
-        Request *req = new Request(0, gen.addr(), gen.size(), 0,
-                                   cuList[0]->masterId(), 0, 0, 0);
+
+        RequestPtr req = std::make_shared<Request>(
+            gen.addr(), gen.size(), 0,
+            cuList[0]->masterId(), 0, 0, nullptr);
 
         doFunctionalAccess(req, cmd, data_buf, suppress_func_errors, cu_id);
         data_buf += gen.size();
-        delete req;
     }
 }
 

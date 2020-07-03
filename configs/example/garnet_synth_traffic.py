@@ -26,6 +26,9 @@
 #
 # Author: Tushar Krishna
 
+from __future__ import print_function
+from __future__ import absolute_import
+
 import m5
 from m5.objects import *
 from m5.defines import buildEnv
@@ -85,19 +88,16 @@ parser.add_option("--inj-vnet", type="int", default=-1,
 #
 Ruby.define_options(parser)
 
-execfile(os.path.join(config_root, "common", "Options.py"))
-
 (options, args) = parser.parse_args()
 
 if args:
-     print "Error: script doesn't take any positional arguments"
+     print("Error: script doesn't take any positional arguments")
      sys.exit(1)
 
 
 if options.inj_vnet > 2:
-    print "Error: Injection vnet %d should be 0 (1-flit), 1 (1-flit) \
-                  or 2 (5-flit) or -1 (random)"\
-           % (options.inj_vnet)
+    print("Error: Injection vnet %d should be 0 (1-flit), 1 (1-flit) "
+          "or 2 (5-flit) or -1 (random)" % (options.inj_vnet))
     sys.exit(1)
 
 
@@ -111,7 +111,7 @@ cpus = [ GarnetSyntheticTraffic(
                      inj_vnet=options.inj_vnet,
                      precision=options.precision,
                      num_dest=options.num_dirs) \
-         for i in xrange(options.num_cpus) ]
+         for i in range(options.num_cpus) ]
 
 # create the desired simulated system
 system = System(cpu = cpus, mem_ranges = [AddrRange(options.mem_size)])
@@ -153,4 +153,4 @@ m5.instantiate()
 # simulate until program terminates
 exit_event = m5.simulate(options.abs_max_tick)
 
-print 'Exiting @ tick', m5.curTick(), 'because', exit_event.getCause()
+print('Exiting @ tick', m5.curTick(), 'because', exit_event.getCause())

@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 #include "base/debug.hh"
@@ -37,7 +35,7 @@
 #include <csignal>
 
 #include "base/cprintf.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 
 using namespace std;
 

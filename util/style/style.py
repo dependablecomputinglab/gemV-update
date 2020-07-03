@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python2.7
 # Copyright (c) 2014, 2016 ARM Limited
 # All rights reserved
 #
@@ -38,17 +38,13 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Nathan Binkert
-#          Steve Reinhardt
-#          Andreas Sandberg
 
 from abc import ABCMeta, abstractmethod
 import difflib
 import re
 import sys
 
-from region import *
+from .region import *
 
 tabsize = 8
 lead = re.compile(r'^([ \t]+)')
@@ -115,6 +111,11 @@ style_ignores = [
     _re_ignore("^ext/"),
     # Ignore test data, as they are not code
     _re_ignore("^tests/(?:quick|long)/"),
+    # Ignore RISC-V assembly tests as they are maintained in an external
+    # project that does not follow the gem5 coding convention
+    _re_ignore("tests/test-progs/asmtest/src/riscv/"),
+    # Ignore RISC-V assembly dump files
+    _re_ignore("tests/test-progs/asmtest/dump/riscv/")
 ]
 
 def check_ignores(fname):

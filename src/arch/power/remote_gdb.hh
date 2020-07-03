@@ -27,11 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Stephen Hines
- *          Timothy M. Jones
- *          Boris Shingarov
  */
 
 #ifndef __ARCH_POWER_REMOTE_GDB_HH__
@@ -69,12 +64,17 @@ class RemoteGDB : public BaseRemoteGDB
         size_t size() const { return sizeof(r); }
         void getRegs(ThreadContext*);
         void setRegs(ThreadContext*) const;
-        const std::string name() const { return gdb->name() + ".PowerGdbRegCache"; }
+        const std::string
+        name() const
+        {
+            return gdb->name() + ".PowerGdbRegCache";
+        }
     };
 
+    PowerGdbRegCache regCache;
 
   public:
-    RemoteGDB(System *_system, ThreadContext *tc);
+    RemoteGDB(System *_system, ThreadContext *tc, int _port);
     BaseGdbRegCache *gdbRegs();
 };
 

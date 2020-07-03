@@ -26,9 +26,6 @@
 // THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Authors: Maxwell Walter
-//          Alec Roelke
 
 ////////////////////////////////////////////////////////////////////
 //
@@ -52,12 +49,6 @@ namespace RiscvISA;
 
 //Include the operand_types and operand definitions
 ##include "operands.isa"
-
-//Include the base class for riscv instructions, and some support code
-##include "base.isa"
-
-// Include the base class for instructions with micro code
-##include "micro.isa"
 
 //Include the definitions for the instruction formats
 ##include "formats/formats.isa"

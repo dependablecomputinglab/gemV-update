@@ -25,14 +25,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Niket Agarwal
- *          Tushar Krishna
  */
 
 
-#ifndef __MEM_RUBY_NETWORK_GARNET_OUTVC_STATE_HH__
-#define __MEM_RUBY_NETWORK_GARNET_OUTVC_STATE_HH__
+#ifndef __MEM_RUBY_NETWORK_GARNET2_0_OUTVCSTATE_HH__
+#define __MEM_RUBY_NETWORK_GARNET2_0_OUTVCSTATE_HH__
 
 #include "mem/ruby/network/garnet2.0/CommonTypes.hh"
 #include "mem/ruby/network/garnet2.0/GarnetNetwork.hh"
@@ -67,4 +64,4 @@ class OutVcState
     int m_max_credit_count;
 };
 
-#endif // __MEM_RUBY_NETWORK_GARNET_OUTVC_STATE_HH__
+#endif //__MEM_RUBY_NETWORK_GARNET2_0_OUTVCSTATE_HH__

@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __ARCH_SPARC_KERNEL_STATS_HH__
@@ -41,13 +39,10 @@
 namespace SparcISA {
 namespace Kernel {
 
-enum cpu_mode { hypervisor, kernel, user, idle, cpu_mode_num };
-extern const char *modestr[];
-
 class Statistics : public ::Kernel::Statistics
 {
   public:
-    Statistics(System *system) : ::Kernel::Statistics(system)
+    Statistics() : ::Kernel::Statistics()
     {}
 };
 

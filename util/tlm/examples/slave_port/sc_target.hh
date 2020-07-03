@@ -28,8 +28,6 @@
  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Matthias Jung
  */
 
 #ifndef __SIM_SC_TARGET_HH__
@@ -90,6 +88,9 @@ struct Target: sc_module
 
     /** Method process that runs on target_done_event */
     void execute_transaction_process();
+
+    /** Helping function that checks if a requested address is with range */
+    void check_address(unsigned long long int addr);
 
     /** Helping Variables **/
     unsigned long long int size;

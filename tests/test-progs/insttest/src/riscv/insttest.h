@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Alec Roelke
  */
 
 #pragma once
@@ -72,7 +70,6 @@ expect(const T& expected, std::function<T()> func,
     } else {
         cout << "\033[1;31mFAIL\033[0m (expected " << expected << "; found " <<
             result << ")" << endl;
-        exit(1);
     }
 }
 

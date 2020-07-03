@@ -37,9 +37,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
- *          Stephen Hines
  */
 
 #ifndef __ARCH_ARM_ISA_TRAITS_HH__
@@ -49,16 +46,11 @@
 #include "base/types.hh"
 #include "cpu/static_inst_fwd.hh"
 
-namespace LittleEndianGuest {}
-
 namespace ArmISA
 {
-    using namespace LittleEndianGuest;
+    const ByteOrder GuestByteOrder = LittleEndianByteOrder;
 
     StaticInstPtr decodeInst(ExtMachInst);
-
-    // ARM DOES NOT have a delay slot
-    #define ISA_HAS_DELAY_SLOT 0
 
     const Addr PageShift = 12;
     const Addr PageBytes = ULL(1) << PageShift;
@@ -95,9 +87,6 @@ namespace ArmISA
 
     // Max. physical address range in bits supported by the architecture
     const unsigned MaxPhysAddrRange = 48;
-
-    // return a no-op instruction... used for instruction fetch faults
-    const ExtMachInst NoopMachInst = 0x01E320F000ULL;
 
     const int MachineBytes = 4;
 

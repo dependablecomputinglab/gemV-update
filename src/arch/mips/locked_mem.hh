@@ -36,8 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Steve Reinhardt
  */
 
 #ifndef __ARCH_MIPS_LOCKED_MEM_HH__
@@ -50,7 +48,7 @@
  */
 
 #include "arch/registers.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/LLSC.hh"
 #include "mem/packet.hh"
@@ -75,7 +73,7 @@ handleLockedSnoop(XC *xc, PacketPtr pkt, Addr cacheBlockMask)
 
 template <class XC>
 inline void
-handleLockedRead(XC *xc, Request *req)
+handleLockedRead(XC *xc, const RequestPtr &req)
 {
     xc->setMiscReg(MISCREG_LLADDR, req->getPaddr() & ~0xf);
     xc->setMiscReg(MISCREG_LLFLAG, true);
@@ -92,7 +90,7 @@ handleLockedSnoopHit(XC *xc)
 
 template <class XC>
 inline bool
-handleLockedWrite(XC *xc, Request *req, Addr cacheBlockMask)
+handleLockedWrite(XC *xc, const RequestPtr &req, Addr cacheBlockMask)
 {
     if (req->isUncacheable()) {
         // Funky Turbolaser mailbox access...don't update
@@ -137,6 +135,13 @@ handleLockedWrite(XC *xc, Request *req, Addr cacheBlockMask)
     }
 
     return true;
+}
+
+template <class XC>
+inline void
+globalClearExclusive(XC *xc)
+{
+    xc->getCpuPtr()->wakeup(xc->threadId());
 }
 
 } // namespace MipsISA

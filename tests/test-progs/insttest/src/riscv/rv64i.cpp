@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Alec Roelke
  */
 
 #include <fcntl.h>
@@ -137,6 +135,7 @@ int main()
     // SLTIU
     expect<bool>(false, []{return I::sltiu(-1, 0);}, "sltiu, false");
     expect<bool>(true, []{return I::sltiu(0, -1);}, "sltiu, true");
+    expect<bool>(true, []{return I::sltiu(0xFFFF, -1);}, "sltiu, sext");
 
     // XORI
     expect<uint64_t>(0xFF, []{return I::xori(0xAA, 0x55);}, "xori (1)");

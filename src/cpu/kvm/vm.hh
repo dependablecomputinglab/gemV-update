@@ -34,8 +34,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #ifndef __CPU_KVM_KVMVM_HH__
@@ -351,6 +349,15 @@ class KvmVM : public SimObject
      * Is in-kernel IRQ chip emulation enabled?
      */
     bool hasKernelIRQChip() const { return _hasKernelIRQChip; }
+
+    /**
+     * Tell the VM and VCPUs to use an in-kernel IRQ chip for
+     * interrupt delivery.
+     *
+     * @note This is set automatically if the IRQ chip is created
+     * using the KvmVM::createIRQChip() API.
+     */
+    void enableKernelIRQChip() { _hasKernelIRQChip = true; }
     /** @} */
 
     struct MemSlot

@@ -34,8 +34,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __ARCH_X86_INSTS_MICROLDSTOP_HH__
@@ -75,12 +73,12 @@ namespace X86ISA
                 Request::FlagsType _memFlags,
                 OpClass __opClass) :
         X86MicroopBase(_machInst, mnem, _instMnem, setFlags, __opClass),
-                scale(_scale), index(_index.idx), base(_base.idx),
-                disp(_disp), segment(_segment.idx),
+                scale(_scale), index(_index.index()), base(_base.index()),
+                disp(_disp), segment(_segment.index()),
                 dataSize(_dataSize), addressSize(_addressSize),
-                memFlags(_memFlags | _segment.idx)
+                memFlags(_memFlags | _segment.index())
         {
-            assert(_segment.idx < NUM_SEGMENTREGS);
+            assert(_segment.index() < NUM_SEGMENTREGS);
             foldOBit =
                 (dataSize == 1 && !_machInst.rex.present) ? 1 << 6 : 0;
             foldABit =
@@ -110,12 +108,12 @@ namespace X86ISA
                 _scale, _index, _base, _disp, _segment,
                 _dataSize, _addressSize, _memFlags,
                 __opClass),
-                data(_data.idx)
+                data(_data.index())
         {
         }
 
-        std::string generateDisassembly(Addr pc,
-            const SymbolTable *symtab) const;
+        std::string generateDisassembly(
+                Addr pc, const Loader::SymbolTable *symtab) const;
     };
 
     /**
@@ -143,13 +141,13 @@ namespace X86ISA
                 _scale, _index, _base, _disp, _segment,
                 _dataSize, _addressSize, _memFlags,
                 __opClass),
-                dataLow(_dataLow.idx),
-                dataHi(_dataHi.idx)
+                dataLow(_dataLow.index()),
+                dataHi(_dataHi.index())
         {
         }
 
-        std::string generateDisassembly(Addr pc,
-            const SymbolTable *symtab) const;
+        std::string generateDisassembly(
+                Addr pc, const Loader::SymbolTable *symtab) const;
     };
 }
 

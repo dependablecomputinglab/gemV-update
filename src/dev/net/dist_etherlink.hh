@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabor Dozsa
  */
 
 /* @file
@@ -61,7 +59,7 @@ class EthPacketData;
 /**
  * Model for a fixed bandwidth full duplex ethernet link.
  */
-class DistEtherLink : public EtherObject
+class DistEtherLink : public SimObject
 {
   protected:
     class LocalIface;
@@ -118,15 +116,13 @@ class DistEtherLink : public EtherObject
          * Send done callback. Called from doneEvent.
          */
         void txDone();
-        typedef EventWrapper<TxLink, &TxLink::txDone> DoneEvent;
-        friend void DoneEvent::process();
-        DoneEvent doneEvent;
+        EventFunctionWrapper doneEvent;
 
       public:
         TxLink(const std::string &name, DistEtherLink *p,
                double invBW, Tick delay_var, EtherDump *d) :
             Link(name, p, d, &doneEvent), ticksPerByte(invBW),
-            delayVar(delay_var), doneEvent(this) {}
+            delayVar(delay_var), doneEvent([this]{ txDone(); }, name) {}
         ~TxLink() {}
 
         /**
@@ -159,16 +155,14 @@ class DistEtherLink : public EtherObject
          * Receive done callback method. Called from doneEvent.
          */
         void rxDone();
-        typedef EventWrapper<RxLink, &RxLink::rxDone> DoneEvent;
-        friend void DoneEvent::process();
-        DoneEvent _doneEvent;
+        EventFunctionWrapper _doneEvent;
 
       public:
 
         RxLink(const std::string &name, DistEtherLink *p,
                Tick delay, EtherDump *d) :
-            Link(name, p, d, &_doneEvent),
-            linkDelay(delay), _doneEvent(this) {}
+            Link(name, p, d, &_doneEvent), linkDelay(delay),
+            _doneEvent([this]{ rxDone(); }, name) {}
         ~RxLink() {}
 
         /**
@@ -178,7 +172,7 @@ class DistEtherLink : public EtherObject
         /**
          * Done events will be scheduled by DistIface (so we need the accessor)
          */
-        const DoneEvent *doneEvent() const { return &_doneEvent; }
+        const EventFunctionWrapper *doneEvent() const { return &_doneEvent; }
     };
 
     /**
@@ -227,8 +221,8 @@ class DistEtherLink : public EtherObject
         return dynamic_cast<const Params *>(_params);
     }
 
-    virtual EtherInt *getEthPort(const std::string &if_name,
-                                 int idx) override;
+    Port &getPort(const std::string &if_name,
+                  PortID idx=InvalidPortID) override;
 
     virtual void init() override;
     virtual void startup() override;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, 2017 ARM Limited
+ * Copyright (c) 2015, 2017, 2019 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #include "arch/arm/kvm/armv8_cpu.hh"
@@ -51,7 +49,7 @@ static_assert(NUM_XREGS == 31, "Unexpected number of aarch64 int. regs.");
 
 // The KVM interface accesses vector registers of 4 single precision
 // floats instead of individual registers.
-constexpr static unsigned NUM_QREGS = NumFloatV8ArchRegs / 4;
+constexpr static unsigned NUM_QREGS = NumVecV8ArchRegs;
 static_assert(NUM_QREGS == 32, "Unexpected number of aarch64 vector regs.");
 
 #define EXTRACT_FIELD(v, name) \
@@ -96,7 +94,6 @@ union KvmFPReg {
 };
 
 #define FP_REGS_PER_VFP_REG 4
-static_assert(sizeof(FloatRegBits) == 4, "Unexpected float reg size");
 
 const std::vector<ArmV8KvmCPU::IntRegInfo> ArmV8KvmCPU::intRegMap = {
     { INT_REG(regs.sp), INTREG_SP0, "SP(EL0)" },
@@ -110,8 +107,14 @@ const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegMap = {
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_UND]), MISCREG_SPSR_UND, "SPSR(UND)"),
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_IRQ]), MISCREG_SPSR_IRQ, "SPSR(IRQ)"),
     MiscRegInfo(INT_REG(spsr[KVM_SPSR_FIQ]), MISCREG_SPSR_FIQ, "SPSR(FIQ)"),
-    MiscRegInfo(INT_REG(fp_regs.fpsr), MISCREG_FPSR, "FPSR"),
-    MiscRegInfo(INT_REG(fp_regs.fpcr), MISCREG_FPCR, "FPCR"),
+    MiscRegInfo(CORE_REG(fp_regs.fpsr, U32), MISCREG_FPSR, "FPSR"),
+    MiscRegInfo(CORE_REG(fp_regs.fpcr, U32), MISCREG_FPCR, "FPCR"),
+};
+
+const std::set<MiscRegIndex> ArmV8KvmCPU::deviceRegSet = {
+    MISCREG_CNTV_CTL_EL0,
+    MISCREG_CNTV_CVAL_EL0,
+    MISCREG_CNTKCTL_EL1,
 };
 
 const std::vector<ArmV8KvmCPU::MiscRegInfo> ArmV8KvmCPU::miscRegIdMap = {
@@ -223,7 +226,7 @@ ArmV8KvmCPU::updateKvmState()
         cpsr.ge = 0;
     }
     DPRINTF(KvmContext, "  %s := 0x%x\n", "PSTATE", cpsr);
-    setOneReg(INT_REG(regs.pstate), cpsr);
+    setOneReg(INT_REG(regs.pstate), static_cast<uint64_t>(cpsr));
 
     for (const auto &ri : miscRegMap) {
         const uint64_t value(tc->readMiscReg(ri.idx));
@@ -244,17 +247,27 @@ ArmV8KvmCPU::updateKvmState()
     }
 
     for (int i = 0; i < NUM_QREGS; ++i) {
-        const RegIndex reg_base(i * FP_REGS_PER_VFP_REG);
         KvmFPReg reg;
+        auto v = tc->readVecReg(RegId(VecRegClass, i)).as<VecElem>();
         for (int j = 0; j < FP_REGS_PER_VFP_REG; j++)
-            reg.s[j].i = tc->readFloatRegBits(reg_base + j);
+            reg.s[j].i = v[j];
 
         setOneReg(kvmFPReg(i), reg.data);
         DPRINTF(KvmContext, "  Q%i: %s\n", i, getAndFormatOneReg(kvmFPReg(i)));
     }
 
     for (const auto &ri : getSysRegMap()) {
-        const uint64_t value(tc->readMiscReg(ri.idx));
+        uint64_t value;
+        if (ri.is_device) {
+            // This system register is backed by a device. This means
+            // we need to lock the device event queue.
+            EventQueue::ScopedMigration migrate(deviceEventQueue());
+
+            value = tc->readMiscReg(ri.idx);
+        } else {
+            value = tc->readMiscReg(ri.idx);
+        }
+
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
         setOneReg(ri.kvm, value);
     }
@@ -269,7 +282,7 @@ ArmV8KvmCPU::updateThreadContext()
     DPRINTF(KvmContext, "In updateThreadContext():\n");
 
     // Update pstate thread context
-    const CPSR cpsr(tc->readMiscRegNoEffect(MISCREG_CPSR));
+    const CPSR cpsr(getOneRegU64(INT_REG(regs.pstate)));
     DPRINTF(KvmContext, "  %s := 0x%x\n", "PSTATE", cpsr);
     tc->setMiscRegNoEffect(MISCREG_CPSR, cpsr);
     tc->setCCReg(CCREG_NZ, cpsr.nz);
@@ -306,18 +319,26 @@ ArmV8KvmCPU::updateThreadContext()
     }
 
     for (int i = 0; i < NUM_QREGS; ++i) {
-        const RegIndex reg_base(i * FP_REGS_PER_VFP_REG);
         KvmFPReg reg;
         DPRINTF(KvmContext, "  Q%i: %s\n", i, getAndFormatOneReg(kvmFPReg(i)));
         getOneReg(kvmFPReg(i), reg.data);
+        auto v = tc->getWritableVecReg(RegId(VecRegClass, i)).as<VecElem>();
         for (int j = 0; j < FP_REGS_PER_VFP_REG; j++)
-            tc->setFloatRegBits(reg_base + j, reg.s[j].i);
+            v[j] = reg.s[j].i;
     }
 
     for (const auto &ri : getSysRegMap()) {
         const auto value(getOneRegU64(ri.kvm));
         DPRINTF(KvmContext, "  %s := 0x%x\n", ri.name, value);
-        tc->setMiscRegNoEffect(ri.idx, value);
+        if (ri.is_device) {
+            // This system register is backed by a device. This means
+            // we need to lock the device event queue.
+            EventQueue::ScopedMigration migrate(deviceEventQueue());
+
+            tc->setMiscReg(ri.idx, value);
+        } else {
+            tc->setMiscRegNoEffect(ri.idx, value);
+        }
     }
 
     PCState pc(getOneRegU64(INT_REG(regs.pc)));
@@ -366,7 +387,8 @@ ArmV8KvmCPU::getSysRegMap() const
         // Only add implemented registers that we are going to be able
         // to write.
         if (implemented && writeable)
-            sysRegMap.emplace_back(reg, idx, miscRegName[idx]);
+            sysRegMap.emplace_back(reg, idx, miscRegName[idx],
+                deviceRegSet.find(idx) != deviceRegSet.end());
     }
 
     return sysRegMap;

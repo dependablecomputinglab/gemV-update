@@ -36,8 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Stephen Hines
  */
 
 #include "arch/arm/insts/mem.hh"
@@ -54,7 +52,7 @@ MemoryReg::printOffset(std::ostream &os) const
 {
     if (!add)
         os << "-";
-    printReg(os, index);
+    printIntReg(os, index);
     if (shiftType != LSL || shiftAmt != 0) {
         switch (shiftType) {
           case LSL:
@@ -78,21 +76,7 @@ MemoryReg::printOffset(std::ostream &os) const
 }
 
 string
-Swap::generateDisassembly(Addr pc, const SymbolTable *symtab) const
-{
-    stringstream ss;
-    printMnemonic(ss);
-    printReg(ss, dest);
-    ss << ", ";
-    printReg(ss, op1);
-    ss << ", [";
-    printReg(ss, base);
-    ss << "]";
-    return ss.str();
-}
-
-string
-RfeOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+RfeOp::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
 {
     stringstream ss;
     switch (mode) {
@@ -109,7 +93,7 @@ RfeOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
         printMnemonic(ss, "ib");
         break;
     }
-    printReg(ss, base);
+    printIntReg(ss, base);
     if (wb) {
         ss << "!";
     }
@@ -117,7 +101,7 @@ RfeOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
 }
 
 string
-SrsOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+SrsOp::generateDisassembly(Addr pc, const Loader::SymbolTable *symtab) const
 {
     stringstream ss;
     switch (mode) {
@@ -134,7 +118,7 @@ SrsOp::generateDisassembly(Addr pc, const SymbolTable *symtab) const
         printMnemonic(ss, "ib");
         break;
     }
-    printReg(ss, INTREG_SP);
+    printIntReg(ss, INTREG_SP);
     if (wb) {
         ss << "!";
     }
@@ -180,7 +164,7 @@ Memory::printInst(std::ostream &os, AddrMode addrMode) const
     printMnemonic(os);
     printDest(os);
     os << ", [";
-    printReg(os, base);
+    printIntReg(os, base);
     if (addrMode != AddrMd_PostIndex) {
         os << ", ";
         printOffset(os);

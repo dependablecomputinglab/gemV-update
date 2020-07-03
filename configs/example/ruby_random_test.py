@@ -24,9 +24,9 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Ron Dreslinski
-#          Brad Beckmann
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import m5
 from m5.objects import *
@@ -57,7 +57,9 @@ parser.add_option("-f", "--wakeup_freq", metavar="N", default=10,
 #
 Ruby.define_options(parser)
 
-execfile(os.path.join(config_root, "common", "Options.py"))
+exec(compile( \
+    open(os.path.join(config_root, "common", "Options.py")).read(), \
+    os.path.join(config_root, "common", "Options.py"), 'exec'))
 
 (options, args) = parser.parse_args()
 
@@ -75,7 +77,7 @@ options.l2_assoc=2
 options.l3_assoc=2
 
 if args:
-     print "Error: script doesn't take any positional arguments"
+     print("Error: script doesn't take any positional arguments")
      sys.exit(1)
 
 #
@@ -156,4 +158,4 @@ m5.instantiate()
 # simulate until program terminates
 exit_event = m5.simulate(options.abs_max_tick)
 
-print 'Exiting @ tick', m5.curTick(), 'because', exit_event.getCause()
+print('Exiting @ tick', m5.curTick(), 'because', exit_event.getCause())

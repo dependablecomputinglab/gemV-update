@@ -25,14 +25,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Niket Agarwal
- *          Tushar Krishna
  */
 
 
-#ifndef __MEM_RUBY_NETWORK_GARNET_CREDIT_HH__
-#define __MEM_RUBY_NETWORK_GARNET_CREDIT_HH__
+#ifndef __MEM_RUBY_NETWORK_GARNET2_0_CREDIT_HH__
+#define __MEM_RUBY_NETWORK_GARNET2_0_CREDIT_HH__
 
 #include <cassert>
 #include <iostream>
@@ -57,4 +54,4 @@ class Credit : public flit
     bool m_is_free_signal;
 };
 
-#endif // __MEM_RUBY_NETWORK_GARNET_CREDIT_HH__
+#endif // __MEM_RUBY_NETWORK_GARNET2_0_CREDIT_HH__

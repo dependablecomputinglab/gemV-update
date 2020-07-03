@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __ARCH_X86_FAULTS_HH__
@@ -44,7 +42,7 @@
 
 #include "arch/x86/tlb.hh"
 #include "base/bitunion.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "sim/faults.hh"
 
 namespace X86ISA

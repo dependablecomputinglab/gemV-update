@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
  */
 
 #ifndef __CPU_INST_PB_TRACE_HH__
@@ -93,6 +91,9 @@ class InstPBTrace : public InstTracer
                                     StaticInstPtr mi = NULL) override;
 
   protected:
+    std::unique_ptr<uint8_t []> buf;
+    size_t bufSize;
+
     /** One output stream for the entire simulation.
      * We encode the CPU & system ID so all we need is a single file
      */

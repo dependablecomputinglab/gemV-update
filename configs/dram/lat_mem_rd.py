@@ -32,10 +32,12 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Hansson
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import gzip
+import six
 import optparse
 import os
 
@@ -45,10 +47,14 @@ from m5.util import addToPath
 from m5.stats import periodicStatDump
 
 addToPath('../')
+from common import ObjectList
 from common import MemConfig
 
 addToPath('../../util')
 import protolib
+
+if six.PY3:
+    long = int
 
 # this script is helpful to observe the memory latency for various
 # levels in a cache hierarchy, and various cache and memory
@@ -60,28 +66,28 @@ import protolib
 try:
     import packet_pb2
 except:
-    print "Did not find packet proto definitions, attempting to generate"
+    print("Did not find packet proto definitions, attempting to generate")
     from subprocess import call
     error = call(['protoc', '--python_out=configs/dram',
                   '--proto_path=src/proto', 'src/proto/packet.proto'])
     if not error:
-        print "Generated packet proto definitions"
+        print("Generated packet proto definitions")
 
         try:
             import google.protobuf
         except:
-            print "Please install the Python protobuf module"
+            print("Please install the Python protobuf module")
             exit(-1)
 
         import packet_pb2
     else:
-        print "Failed to import packet proto definitions"
+        print("Failed to import packet proto definitions")
         exit(-1)
 
 parser = optparse.OptionParser()
 
 parser.add_option("--mem-type", type="choice", default="DDR3_1600_8x8",
-                  choices=MemConfig.mem_names(),
+                  choices=ObjectList.mem_list.get_names(),
                   help = "type of memory to use")
 parser.add_option("--mem-size", action="store", type="string",
                   default="16MB",
@@ -92,7 +98,7 @@ parser.add_option("--reuse-trace", action="store_true",
 (options, args) = parser.parse_args()
 
 if args:
-    print "Error: script doesn't take any positional arguments"
+    print("Error: script doesn't take any positional arguments")
     sys.exit(1)
 
 # start by creating the system itself, using a multi-layer 2.0 GHz
@@ -171,7 +177,7 @@ def create_trace(filename, max_addr, burst_size, itt):
     try:
         proto_out = gzip.open(filename, 'wb')
     except IOError:
-        print "Failed to open ", filename, " for writing"
+        print("Failed to open ", filename, " for writing")
         exit(-1)
 
     # write the magic number in 4-byte Little Endian, similar to what
@@ -186,7 +192,7 @@ def create_trace(filename, max_addr, burst_size, itt):
     protolib.encodeMessage(proto_out, header)
 
     # create a list of every single address to touch
-    addrs = range(0, max_addr, burst_size)
+    addrs = list(range(0, max_addr, burst_size))
 
     import random
     random.shuffle(addrs)
@@ -208,7 +214,7 @@ def create_trace(filename, max_addr, burst_size, itt):
     proto_out.close()
 
 # this will take a while, so keep the user informed
-print "Generating traces, please wait..."
+print("Generating traces, please wait...")
 
 nxt_range = 0
 nxt_state = 0
@@ -264,7 +270,9 @@ from common.Caches import *
 # a starting point for an L3 cache
 class L3Cache(Cache):
     assoc = 16
-    hit_latency = 40
+    tag_latency = 20
+    data_latency = 20
+    sequential_access = True
     response_latency = 40
     mshrs = 32
     tgts_per_mshr = 12
@@ -302,6 +310,6 @@ m5.instantiate()
 m5.simulate(nxt_state * period)
 
 # print all we need to make sense of the stats output
-print "lat_mem_rd with %d iterations, ranges:" % iterations
+print("lat_mem_rd with %d iterations, ranges:" % iterations)
 for r in ranges:
-    print r
+    print(r)

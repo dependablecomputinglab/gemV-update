@@ -33,9 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Chris Emmons
- *          Andreas Sandberg
  */
 
 
@@ -79,8 +76,8 @@
 #include <fstream>
 #include <memory>
 
-#include "base/bitmap.hh"
 #include "base/framebuffer.hh"
+#include "base/imgwriter.hh"
 #include "base/output.hh"
 #include "dev/arm/amba_device.hh"
 #include "dev/pixelpump.hh"
@@ -347,10 +344,13 @@ class HDLcd: public AmbaDmaDevice
 
     /** Handler for fast frame refresh in KVM-mode */
     void virtRefresh();
-    EventWrapper<HDLcd, &HDLcd::virtRefresh> virtRefreshEvent;
+    EventFunctionWrapper virtRefreshEvent;
 
     /** Helper to write out bitmaps */
-    Bitmap bmp;
+    std::unique_ptr<ImgWriter> imgWriter;
+
+    /** Image Format */
+    Enums::ImageFormat imgFormat;
 
     /** Picture of what the current frame buffer looks like */
     OutputStream *pic;

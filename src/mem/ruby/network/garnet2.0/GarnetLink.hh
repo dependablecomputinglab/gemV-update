@@ -25,14 +25,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Niket Agarwal
- *          Tushar Krishna
  */
 
 
-#ifndef __MEM_RUBY_NETWORK_GARNET_LINK_HH__
-#define __MEM_RUBY_NETWORK_GARNET_LINK_HH__
+#ifndef __MEM_RUBY_NETWORK_GARNET2_0_GARNETLINK_HH__
+#define __MEM_RUBY_NETWORK_GARNET2_0_GARNETLINK_HH__
 
 #include <iostream>
 #include <string>
@@ -94,4 +91,4 @@ operator<<(std::ostream& out, const GarnetExtLink& obj)
     return out;
 }
 
-#endif // __MEM_RUBY_NETWORK_GARNET_LINK_HH__
+#endif //__MEM_RUBY_NETWORK_GARNET2_0_GARNETLINK_HH__

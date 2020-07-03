@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 ARM Limited
+ * Copyright (c) 2012, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -37,8 +37,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Kevin Lim
  */
 
 #ifndef __CPU_O3_RENAME_HH__
@@ -85,9 +83,6 @@ class DefaultRename
     typedef typename CPUPol::IEW IEW;
     typedef typename CPUPol::Commit Commit;
 
-    // Typedefs from the ISA.
-    typedef TheISA::RegIndex RegIndex;
-
     // A deque is used to queue the instructions. Barrier insts must
     // be added to the front of the queue, which is the only reason for
     // using a deque instead of a queue. (Most other stages use a
@@ -122,7 +117,7 @@ class DefaultRename
     ThreadStatus renameStatus[Impl::MaxThreads];
 
     /** Probe points. */
-    typedef typename std::pair<InstSeqNum, short int> SeqNumRegPair;
+    typedef typename std::pair<InstSeqNum, PhysRegIdPtr> SeqNumRegPair;
     /** To probe when register renaming for an instruction is complete */
     ProbePointArg<DynInstPtr> *ppRename;
     /**
@@ -172,6 +167,9 @@ class DefaultRename
   public:
     /** Initializes variables for the stage. */
     void startupStage();
+
+    /** Clear all thread-specific states */
+    void clearStates(ThreadID tid);
 
     /** Sets pointer to list of active threads. */
     void setActiveThreads(std::list<ThreadID> *at_ptr);
@@ -256,10 +254,10 @@ class DefaultRename
     void removeFromHistory(InstSeqNum inst_seq_num, ThreadID tid);
 
     /** Renames the source registers of an instruction. */
-    inline void renameSrcRegs(DynInstPtr &inst, ThreadID tid);
+    inline void renameSrcRegs(const DynInstPtr &inst, ThreadID tid);
 
     /** Renames the destination registers of an instruction. */
-    inline void renameDestRegs(DynInstPtr &inst, ThreadID tid);
+    inline void renameDestRegs(const DynInstPtr &inst, ThreadID tid);
 
     /** Calculates the number of free ROB entries for a specific thread. */
     inline int calcFreeROBEntries(ThreadID tid);
@@ -302,8 +300,9 @@ class DefaultRename
      * register for that arch. register, and the new physical register.
      */
     struct RenameHistory {
-        RenameHistory(InstSeqNum _instSeqNum, RegIndex _archReg,
-                      PhysRegIndex _newPhysReg, PhysRegIndex _prevPhysReg)
+        RenameHistory(InstSeqNum _instSeqNum, const RegId& _archReg,
+                      PhysRegIdPtr _newPhysReg,
+                      PhysRegIdPtr _prevPhysReg)
             : instSeqNum(_instSeqNum), archReg(_archReg),
               newPhysReg(_newPhysReg), prevPhysReg(_prevPhysReg)
         {
@@ -312,11 +311,12 @@ class DefaultRename
         /** The sequence number of the instruction that renamed. */
         InstSeqNum instSeqNum;
         /** The architectural register index that was renamed. */
-        RegIndex archReg;
+        RegId archReg;
         /** The new physical register that the arch. register is renamed to. */
-        PhysRegIndex newPhysReg;
-        /** The old physical register that the arch. register was renamed to. */
-        PhysRegIndex prevPhysReg;
+        PhysRegIdPtr newPhysReg;
+        /** The old physical register that the arch. register was renamed to.
+         */
+        PhysRegIdPtr prevPhysReg;
     };
 
     /** A per-thread list of all destination register renames, used to either
@@ -466,8 +466,6 @@ class DefaultRename
     /** The maximum skid buffer size. */
     unsigned skidBufferMax;
 
-    PhysRegIndex maxPhysicalRegs;
-
     /** Enum to record the source of a structure full stall.  Can come from
      * either ROB, IQ, LSQ, and it is priortized in that order.
      */
@@ -517,6 +515,8 @@ class DefaultRename
     Stats::Scalar renameRenameLookups;
     Stats::Scalar intRenameLookups;
     Stats::Scalar fpRenameLookups;
+    Stats::Scalar vecRenameLookups;
+    Stats::Scalar vecPredRenameLookups;
     /** Stat for total number of committed renaming mappings. */
     Stats::Scalar renameCommittedMaps;
     /** Stat for total number of mappings that were undone due to a squash. */

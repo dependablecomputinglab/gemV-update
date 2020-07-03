@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 ARM Limited
+ * Copyright (c) 2013-2014, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Bardsley
  */
 
 /**
@@ -126,12 +124,10 @@ class Pipeline : public Ticked
      *  stages and pipeline advance) */
     void evaluate() override;
 
-    void countCycles(Cycles delta) override
-    {
-        cpu.ppCycles->notify(delta);
-    }
-
     void minorTrace() const;
+
+    /** Stats registering */
+    void regStats();
 
     /** Functions below here are BaseCPU operations passed on to pipeline
      *  stages */

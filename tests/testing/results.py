@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 #
 # Copyright (c) 2016 ARM Limited
 # All rights reserved
@@ -34,12 +34,13 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
+
+from __future__ import print_function
 
 from abc import ABCMeta, abstractmethod
 import inspect
 import pickle
+from six import add_metaclass
 import string
 import sys
 
@@ -141,8 +142,8 @@ class TestResult(object):
     def __nonzero__(self):
         return all([ r for r in self.results ])
 
+@add_metaclass(ABCMeta)
 class ResultFormatter(object):
-    __metaclass__ = ABCMeta
 
     def __init__(self, fout=sys.stdout, verbose=False):
         self.verbose = verbose
@@ -173,21 +174,21 @@ class Text(ResultFormatter):
     def dump_suites(self, suites):
         fout = self.fout
         for suite in suites:
-            print >> fout, "--- %s ---" % suite.name
+            print("--- %s ---" % suite.name, file=fout)
 
             for t in suite.results:
-                print >> fout, "*** %s" % t
+                print("*** %s" % t, file=fout)
 
                 if t and not self.verbose:
                     continue
 
                 if t.message:
-                    print >> fout, t.message
+                    print(t.message, file=fout)
 
                 if t.stderr:
-                    print >> fout, t.stderr
+                    print(t.stderr, file=fout)
                 if t.stdout:
-                    print >> fout, t.stdout
+                    print(t.stdout, file=fout)
 
 class TextSummary(ResultFormatter):
     """Output test results as a text summary"""
@@ -209,7 +210,7 @@ class TextSummary(ResultFormatter):
         fout = self.fout
         for suite in suites:
             status = self.test_status(suite)
-            print >> fout, "%s: %s" % (suite.name, status)
+            print("%s: %s" % (suite.name, status), file=fout)
 
 class JUnit(ResultFormatter):
     """Output test results as JUnit XML"""

@@ -45,17 +45,15 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/x86/pagetable_walker.hh"
 
 #include <memory>
 
+#include "arch/x86/faults.hh"
 #include "arch/x86/pagetable.hh"
 #include "arch/x86/tlb.hh"
-#include "arch/x86/vtophys.hh"
 #include "base/bitfield.hh"
 #include "base/trie.hh"
 #include "cpu/base.hh"
@@ -68,7 +66,7 @@ namespace X86ISA {
 
 Fault
 Walker::start(ThreadContext * _tc, BaseTLB::Translation *_translation,
-              RequestPtr _req, BaseTLB::Mode _mode)
+              const RequestPtr &_req, BaseTLB::Mode _mode)
 {
     // TODO: in timing mode, instead of blocking when there are other
     // outstanding requests, see if this request can be coalesced with
@@ -167,13 +165,13 @@ bool Walker::sendTiming(WalkerState* sendingState, PacketPtr pkt)
 
 }
 
-BaseMasterPort &
-Walker::getMasterPort(const std::string &if_name, PortID idx)
+Port &
+Walker::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "port")
         return port;
     else
-        return MemObject::getMasterPort(if_name, idx);
+        return ClockedObject::getPort(if_name, idx);
 }
 
 void
@@ -205,8 +203,14 @@ Walker::startWalkWrapper()
             std::make_shared<UnimpFault>("Squashed Inst"),
             currState->req, currState->tc, currState->mode);
 
-        // delete the current request
-        delete currState;
+        // delete the current request if there are no inflight packets.
+        // if there is something in flight, delete when the packets are
+        // received and inflight is zero.
+        if (currState->numInflight() == 0) {
+            delete currState;
+        } else {
+            currState->squash();
+        }
 
         // check the next translation request, if it exists
         if (currStates.size())
@@ -279,9 +283,9 @@ Walker::WalkerState::stepWalk(PacketPtr &write)
     write = NULL;
     PageTableEntry pte;
     if (dataSize == 8)
-        pte = read->get<uint64_t>();
+        pte = read->getLE<uint64_t>();
     else
-        pte = read->get<uint32_t>();
+        pte = read->getLE<uint32_t>();
     VAddr vaddr = entry.vaddr;
     bool uncacheable = pte.pcd;
     Addr nextRead = 0;
@@ -514,19 +518,18 @@ Walker::WalkerState::stepWalk(PacketPtr &write)
         //If we didn't return, we're setting up another read.
         Request::Flags flags = oldRead->req->getFlags();
         flags.set(Request::UNCACHEABLE, uncacheable);
-        RequestPtr request =
-            new Request(nextRead, oldRead->getSize(), flags, walker->masterId);
+        RequestPtr request = std::make_shared<Request>(
+            nextRead, oldRead->getSize(), flags, walker->masterId);
         read = new Packet(request, MemCmd::ReadReq);
         read->allocate();
         // If we need to write, adjust the read packet to write the modified
         // value back to memory.
         if (doWrite) {
             write = oldRead;
-            write->set<uint64_t>(pte);
+            write->setLE<uint64_t>(pte);
             write->cmd = MemCmd::WriteReq;
         } else {
             write = NULL;
-            delete oldRead->req;
             delete oldRead;
         }
     }
@@ -537,7 +540,6 @@ void
 Walker::WalkerState::endWalk()
 {
     nextState = Ready;
-    delete read->req;
     delete read;
     read = NULL;
 }
@@ -584,8 +586,10 @@ Walker::WalkerState::setupWalk(Addr vaddr)
     Request::Flags flags = Request::PHYSICAL;
     if (cr3.pcd)
         flags.set(Request::UNCACHEABLE);
-    RequestPtr request = new Request(topAddr, dataSize, flags,
-                                     walker->masterId);
+
+    RequestPtr request = std::make_shared<Request>(
+        topAddr, dataSize, flags, walker->masterId);
+
     read = new Packet(request, MemCmd::ReadReq);
     read->allocate();
 }
@@ -597,6 +601,11 @@ Walker::WalkerState::recvPacket(PacketPtr pkt)
     assert(inflight);
     assert(state == Waiting);
     inflight--;
+    if (squashed) {
+        // if were were squashed, return true once inflight is zero and
+        // this WalkerState will be freed there.
+        return (inflight == 0);
+    }
     if (pkt->isRead()) {
         // should not have a pending read it we also had one outstanding
         assert(!read);
@@ -678,6 +687,12 @@ Walker::WalkerState::sendPackets()
     }
 }
 
+unsigned
+Walker::WalkerState::numInflight() const
+{
+    return inflight;
+}
+
 bool
 Walker::WalkerState::isRetrying()
 {
@@ -694,6 +709,12 @@ bool
 Walker::WalkerState::wasStarted()
 {
     return started;
+}
+
+void
+Walker::WalkerState::squash()
+{
+    squashed = true;
 }
 
 void

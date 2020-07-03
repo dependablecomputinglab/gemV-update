@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014,2016 ARM Limited
+ * Copyright (c) 2014,2016-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -36,9 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
- *          Stephen Hines
  */
 
 #include "arch/arm/insts/pseudo.hh"
@@ -100,7 +97,8 @@ DecoderFaultInst::faultName() const
 }
 
 std::string
-DecoderFaultInst::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+DecoderFaultInst::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     return csprintf("gem5fault %s", faultName());
 }
@@ -134,7 +132,8 @@ FailUnimplemented::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 }
 
 std::string
-FailUnimplemented::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+FailUnimplemented::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     return csprintf("%-10s (unimplemented)",
                     fullMnemonic.size() ? fullMnemonic.c_str() : mnemonic);
@@ -175,48 +174,19 @@ WarnUnimplemented::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 }
 
 std::string
-WarnUnimplemented::generateDisassembly(Addr pc, const SymbolTable *symtab) const
+WarnUnimplemented::generateDisassembly(
+        Addr pc, const Loader::SymbolTable *symtab) const
 {
     return csprintf("%-10s (unimplemented)",
                     fullMnemonic.size() ? fullMnemonic.c_str() : mnemonic);
 }
 
-
-
-McrMrcMiscInst::McrMrcMiscInst(const char *_mnemonic, ExtMachInst _machInst,
-                             uint64_t _iss, MiscRegIndex _miscReg)
-    : ArmStaticInst(_mnemonic, _machInst, No_OpClass)
-{
-    flags[IsNonSpeculative] = true;
-    iss = _iss;
-    miscReg = _miscReg;
-}
+IllegalExecInst::IllegalExecInst(ExtMachInst _machInst)
+    : ArmStaticInst("Illegal Execution", _machInst, No_OpClass)
+{}
 
 Fault
-McrMrcMiscInst::execute(ExecContext *xc, Trace::InstRecord *traceData) const
+IllegalExecInst::execute(ExecContext *xc, Trace::InstRecord *traceData) const
 {
-    uint32_t cpsr = xc->readMiscReg(MISCREG_CPSR);
-    uint32_t hcr = xc->readMiscReg(MISCREG_HCR);
-    uint32_t scr = xc->readMiscReg(MISCREG_SCR);
-    uint32_t hdcr = xc->readMiscReg(MISCREG_HDCR);
-    uint32_t hstr = xc->readMiscReg(MISCREG_HSTR);
-    uint32_t hcptr = xc->readMiscReg(MISCREG_HCPTR);
-
-    bool hypTrap  = mcrMrc15TrapToHyp(miscReg, hcr, cpsr, scr, hdcr, hstr,
-                                      hcptr, iss);
-    if (hypTrap) {
-        return std::make_shared<HypervisorTrap>(machInst, iss,
-                                                EC_TRAPPED_CP15_MCR_MRC);
-    }
-
-    if (miscReg == MISCREG_DCCMVAC)
-        return std::make_shared<FlushPipe>();
-    else
-        return NoFault;
-}
-
-std::string
-McrMrcMiscInst::generateDisassembly(Addr pc, const SymbolTable *symtab) const
-{
-    return csprintf("%-10s (pipe flush)", mnemonic);
+    return std::make_shared<IllegalInstSetStateFault>();
 }

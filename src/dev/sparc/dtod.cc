@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
  */
 
 /** @file
@@ -41,14 +39,12 @@
 
 #include "base/time.hh"
 #include "base/trace.hh"
-#include "config/the_isa.hh"
 #include "dev/platform.hh"
 #include "mem/packet_access.hh"
 #include "mem/port.hh"
 #include "sim/system.hh"
 
 using namespace std;
-using namespace TheISA;
 
 DumbTOD::DumbTOD(const Params *p)
     : BasicPioDevice(p, 0x08)
@@ -66,7 +62,7 @@ DumbTOD::read(PacketPtr pkt)
     assert(pkt->getAddr() >= pioAddr && pkt->getAddr() < pioAddr + pioSize);
     assert(pkt->getSize() == 8);
 
-    pkt->set(todTime);
+    pkt->setBE(todTime);
     todTime += 1000;
 
     pkt->makeAtomicResponse();

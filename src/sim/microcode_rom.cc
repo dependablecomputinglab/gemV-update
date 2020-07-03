@@ -24,13 +24,11 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "sim/microcode_rom.hh"
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "cpu/static_inst_fwd.hh"
 
 StaticInstPtr

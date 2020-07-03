@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 #include "dev/net/etherpkt.hh"
@@ -33,7 +31,7 @@
 #include <iostream>
 
 #include "base/inet.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "sim/serialize.hh"
 
 using namespace std;

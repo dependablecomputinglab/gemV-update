@@ -27,11 +27,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Steve Reinhardt
- *          Stephen Hines
- *          Timothy M. Jones
  */
 
 #ifndef __ARCH_POWER_TLB_HH__
@@ -43,7 +38,6 @@
 #include "arch/power/isa_traits.hh"
 #include "arch/power/pagetable.hh"
 #include "arch/power/utility.hh"
-#include "arch/power/vtophys.hh"
 #include "base/statistics.hh"
 #include "mem/request.hh"
 #include "params/PowerTLB.hh"
@@ -159,17 +153,19 @@ class TLB : public BaseTLB
 
     // static helper functions... really
     static bool validVirtualAddress(Addr vaddr);
-    static Fault checkCacheability(RequestPtr &req);
-    Fault translateInst(RequestPtr req, ThreadContext *tc);
-    Fault translateData(RequestPtr req, ThreadContext *tc, bool write);
-    Fault translateAtomic(RequestPtr req, ThreadContext *tc, Mode mode);
-    void translateTiming(RequestPtr req, ThreadContext *tc,
-                         Translation *translation, Mode mode);
-    /** Stub function for CheckerCPU compilation support.  Power ISA not
-     *  supported by Checker at the moment
-     */
-    Fault translateFunctional(RequestPtr req, ThreadContext *tc, Mode mode);
-    Fault finalizePhysical(RequestPtr req, ThreadContext *tc, Mode mode) const;
+    static Fault checkCacheability(const RequestPtr &req);
+    Fault translateInst(const RequestPtr &req, ThreadContext *tc);
+    Fault translateData(const RequestPtr &req, ThreadContext *tc, bool write);
+    Fault translateAtomic(
+            const RequestPtr &req, ThreadContext *tc, Mode mode) override;
+    void translateTiming(
+            const RequestPtr &req, ThreadContext *tc,
+            Translation *translation, Mode mode) override;
+    Fault translateFunctional(
+            const RequestPtr &req, ThreadContext *tc, Mode mode) override;
+    Fault finalizePhysical(
+            const RequestPtr &req,
+            ThreadContext *tc, Mode mode) const override;
 
     // Checkpointing
     void serialize(CheckpointOut &cp) const override;

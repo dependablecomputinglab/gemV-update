@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2013 ARM Limited
  * Copyright (c) 2014-2015 Sven Karlsson
+ * Copyright (c) 2018 TU Dresden
+ * Copyright (c) 2020 Barkhausen Institut
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -12,7 +14,7 @@
  * unmodified and in its entirety in all distributions of the software,
  * modified or unmodified, in source code or in binary form.
  *
- * Copyright (c) 2016 The University of Virginia
+ * Copyright (c) 2016-2017 The University of Virginia
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,10 +39,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Hansson
- *          Sven Karlsson
- *          Alec Roelke
  */
 
 #ifndef __ARCH_RISCV_UTILITY_HH__
@@ -48,8 +46,12 @@
 
 #include <cmath>
 #include <cstdint>
+#include <sstream>
+#include <string>
 
+#include "arch/riscv/registers.hh"
 #include "base/types.hh"
+#include "cpu/reg_class.hh"
 #include "cpu/static_inst.hh"
 #include "cpu/thread_context.hh"
 
@@ -108,11 +110,14 @@ buildRetPC(const PCState &curPC, const PCState &callPC)
 inline uint64_t
 getArgument(ThreadContext *tc, int &number, uint16_t size, bool fp)
 {
-    return 0;
-}
+    panic_if(fp, "getArgument(): Floating point arguments not implemented");
+    panic_if(size != 8, "getArgument(): Can only handle 64-bit arguments.");
+    panic_if(number >= ArgumentRegs.size(),
+             "getArgument(): Don't know how to handle stack arguments");
 
-inline void startupCPU(ThreadContext *tc, int cpuId)
-{
+    // The first 8 integer arguments are passed in registers, the rest
+    // are passed on the stack.
+    return tc->readIntReg(ArgumentRegs[number]);
 }
 
 inline void
@@ -126,10 +131,33 @@ copyRegs(ThreadContext *src, ThreadContext *dest)
     dest->pcState(src->pcState());
 }
 
-inline void
-skipFunction(ThreadContext *tc)
+inline std::string
+registerName(RegId reg)
 {
-    panic("Not Implemented for Riscv");
+    if (reg.isIntReg()) {
+        if (reg.index() >= NumIntArchRegs) {
+            /*
+             * This should only happen if a instruction is being speculatively
+             * executed along a not-taken branch, and if that instruction's
+             * width was incorrectly predecoded (i.e., it was predecoded as a
+             * full instruction rather than a compressed one or vice versa).
+             * It also should only happen if a debug flag is on that prints
+             * disassembly information, so rather than panic the incorrect
+             * value is printed for debugging help.
+             */
+            std::stringstream str;
+            str << "?? (x" << reg.index() << ')';
+            return str.str();
+        }
+        return IntRegNames[reg.index()];
+    } else {
+        if (reg.index() >= NumFloatRegs) {
+            std::stringstream str;
+            str << "?? (f" << reg.index() << ')';
+            return str.str();
+        }
+        return FloatRegNames[reg.index()];
+    }
 }
 
 inline void
@@ -148,12 +176,6 @@ inline uint64_t
 getExecutingAsid(ThreadContext *tc)
 {
     return 0;
-}
-
-inline void
-initCPU(ThreadContext *, int cpuId)
-{
-    panic("initCPU not implemented for Riscv.\n");
 }
 
 } // namespace RiscvISA

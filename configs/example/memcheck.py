@@ -35,9 +35,9 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Ron Dreslinski
-#          Andreas Hansson
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import optparse
 import random
@@ -108,7 +108,7 @@ parser.add_option("--sys-clock", action="store", type="string",
 (options, args) = parser.parse_args()
 
 if args:
-     print "Error: script doesn't take any positional arguments"
+     print("Error: script doesn't take any positional arguments")
      sys.exit(1)
 
 # Start by parsing the command line options and do some basic sanity
@@ -118,36 +118,36 @@ if options.random:
      tree_depth = random.randint(1, 4)
      cachespec = [random.randint(1, 3) for i in range(tree_depth)]
      testerspec = [random.randint(1, 3) for i in range(tree_depth + 1)]
-     print "Generated random tree -c", ':'.join(map(str, cachespec)), \
-         "-t", ':'.join(map(str, testerspec))
+     print("Generated random tree -c", ':'.join(map(str, cachespec)),
+         "-t", ':'.join(map(str, testerspec)))
 else:
      try:
           cachespec = [int(x) for x in options.caches.split(':')]
           testerspec = [int(x) for x in options.testers.split(':')]
      except:
-          print "Error: Unable to parse caches or testers option"
+          print("Error: Unable to parse caches or testers option")
           sys.exit(1)
 
      if len(cachespec) < 1:
-          print "Error: Must have at least one level of caches"
+          print("Error: Must have at least one level of caches")
           sys.exit(1)
 
      if len(cachespec) != len(testerspec) - 1:
-          print "Error: Testers must have one element more than caches"
+          print("Error: Testers must have one element more than caches")
           sys.exit(1)
 
      if testerspec[-1] == 0:
-          print "Error: Must have testers at the uppermost level"
+          print("Error: Must have testers at the uppermost level")
           sys.exit(1)
 
      for t in testerspec:
           if t < 0:
-               print "Error: Cannot have a negative number of testers"
+               print("Error: Cannot have a negative number of testers")
                sys.exit(1)
 
      for c in cachespec:
           if c < 1:
-               print "Error: Must have 1 or more caches at each level"
+               print("Error: Must have 1 or more caches at each level")
                sys.exit(1)
 
 # Determine the tester multiplier for each level as the string
@@ -155,7 +155,7 @@ else:
 multiplier = [1]
 for c in cachespec:
      if c < 1:
-          print "Error: Must have at least one cache per level"
+          print("Error: Must have at least one cache per level")
      multiplier.append(multiplier[-1] * c)
 
 numtesters = 0
@@ -194,8 +194,9 @@ for scale in cachespec[:-1]:
      cache_proto.insert(0, next)
 
 # Create a config to be used by all the traffic generators
-cfg_file_name = "configs/example/memcheck.cfg"
-cfg_file = open(cfg_file_name, 'w')
+cfg_file_name = "memcheck.cfg"
+cfg_file_path = os.path.dirname(__file__) + "/" +cfg_file_name
+cfg_file = open(cfg_file_path, 'w')
 
 # Three states, with random, linear and idle behaviours. The random
 # and linear states access memory in the range [0 : 16 Mbyte] with 8
@@ -213,7 +214,7 @@ cfg_file.write("TRANSITION 2 1 0.5\n")
 cfg_file.close()
 
 # Make a prototype for the tester to be used throughout
-proto_tester = TrafficGen(config_file = cfg_file_name)
+proto_tester = TrafficGen(config_file = cfg_file_path)
 
 # Set up the system along with a DRAM controller
 system = System(physmem = DDR3_1600_8x8())
@@ -244,9 +245,9 @@ def make_cache_level(ncaches, prototypes, level, next_cache):
      # The levels are indexing backwards through the list
      ntesters = testerspec[len(cachespec) - level]
 
-     testers = [proto_tester() for i in xrange(ntesters)]
+     testers = [proto_tester() for i in range(ntesters)]
      checkers = [MemCheckerMonitor(memchecker = system.memchecker) \
-                      for i in xrange(ntesters)]
+                      for i in range(ntesters)]
      if ntesters:
           subsys.tester = testers
           subsys.checkers = checkers
@@ -262,8 +263,8 @@ def make_cache_level(ncaches, prototypes, level, next_cache):
           # Create and connect the caches, both the ones fanning out
           # to create the tree, and the ones used to connect testers
           # on this level
-          tree_caches = [prototypes[0]() for i in xrange(ncaches[0])]
-          tester_caches = [proto_l1() for i in xrange(ntesters)]
+          tree_caches = [prototypes[0]() for i in range(ncaches[0])]
+          tester_caches = [proto_l1() for i in range(ntesters)]
 
           subsys.cache = tester_caches + tree_caches
           for cache in tree_caches:
@@ -275,7 +276,7 @@ def make_cache_level(ncaches, prototypes, level, next_cache):
                cache.mem_side = xbar.slave
      else:
           if not next_cache:
-               print "Error: No next-level cache at top level"
+               print("Error: No next-level cache at top level")
                sys.exit(1)
 
           if ntesters > 1:
@@ -315,4 +316,4 @@ m5.instantiate()
 # Simulate until program terminates
 exit_event = m5.simulate(options.maxtick)
 
-print 'Exiting @ tick', m5.curTick(), 'because', exit_event.getCause()
+print('Exiting @ tick', m5.curTick(), 'because', exit_event.getCause())

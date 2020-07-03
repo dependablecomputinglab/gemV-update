@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2016 ARM Limited
+ * Copyright (c) 2010-2016, 2019 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,9 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Giacomo Gabrielli
  */
 
 #ifndef __ARCH_ARM_TABLE_WALKER_HH__
@@ -43,11 +40,13 @@
 
 #include <list>
 
+#include "arch/arm/faults.hh"
 #include "arch/arm/miscregs.hh"
 #include "arch/arm/system.hh"
 #include "arch/arm/tlb.hh"
 #include "mem/request.hh"
 #include "params/ArmTableWalker.hh"
+#include "sim/clocked_object.hh"
 #include "sim/eventq.hh"
 
 class ThreadContext;
@@ -59,13 +58,15 @@ class Translation;
 class TLB;
 class Stage2MMU;
 
-class TableWalker : public MemObject
+class TableWalker : public ClockedObject
 {
   public:
     class WalkerState;
 
     class DescriptorBase {
       public:
+        DescriptorBase() : lookupLevel(L0) {}
+
         /** Current lookup level for this descriptor */
         LookupLevel lookupLevel;
 
@@ -380,6 +381,8 @@ class TableWalker : public MemObject
             Block,
             Page
         };
+
+        LongDescriptor() : data(0), _dirty(false) {}
 
         /** The raw bits of the entry */
         uint64_t data;
@@ -750,6 +753,9 @@ class TableWalker : public MemObject
         /** If the access comes from the secure state. */
         bool isSecure;
 
+        /** True if table walks are uncacheable (for table descriptors) */
+        bool isUncacheable;
+
         /** Helper variables used to implement hierarchical access permissions
          * when the long-desc. format is used (LPAE only) */
         bool secureLookup;
@@ -758,13 +764,11 @@ class TableWalker : public MemObject
         bool xnTable;
         bool pxnTable;
 
+        /** Hierarchical access permission disable */
+        bool hpd;
+
         /** Flag indicating if a second stage of lookup is required */
         bool stage2Req;
-
-        /** Indicates whether the translation has been passed onto the second
-         *  stage mmu, and no more work is required from the first stage.
-         */
-        bool doingStage2;
 
         /** A pointer to the stage 2 translation that's in progress */
         TLB::Translation *stage2Tran;
@@ -894,12 +898,13 @@ class TableWalker : public MemObject
     DrainState drain() override;
     void drainResume() override;
 
-    BaseMasterPort& getMasterPort(const std::string &if_name,
-                                  PortID idx = InvalidPortID) override;
+    Port &getPort(const std::string &if_name,
+                  PortID idx=InvalidPortID) override;
 
     void regStats() override;
 
-    Fault walk(RequestPtr req, ThreadContext *tc, uint16_t asid, uint8_t _vmid,
+    Fault walk(const RequestPtr &req, ThreadContext *tc,
+               uint16_t asid, uint8_t _vmid,
                bool _isHyp, TLB::Mode mode, TLB::Translation *_trans,
                bool timing, bool functional, bool secure,
                TLB::ArmTranslationType tranType, bool _stage2Req);
@@ -920,28 +925,22 @@ class TableWalker : public MemObject
 
     void doL1Descriptor();
     void doL1DescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL1DescriptorWrapper> doL1DescEvent;
+    EventFunctionWrapper doL1DescEvent;
 
     void doL2Descriptor();
     void doL2DescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL2DescriptorWrapper> doL2DescEvent;
+    EventFunctionWrapper doL2DescEvent;
 
     void doLongDescriptor();
 
     void doL0LongDescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL0LongDescriptorWrapper> doL0LongDescEvent;
+    EventFunctionWrapper doL0LongDescEvent;
     void doL1LongDescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL1LongDescriptorWrapper> doL1LongDescEvent;
+    EventFunctionWrapper doL1LongDescEvent;
     void doL2LongDescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL2LongDescriptorWrapper> doL2LongDescEvent;
+    EventFunctionWrapper doL2LongDescEvent;
     void doL3LongDescriptorWrapper();
-    EventWrapper<TableWalker,
-                 &TableWalker::doL3LongDescriptorWrapper> doL3LongDescEvent;
+    EventFunctionWrapper doL3LongDescEvent;
 
     void doLongDescriptorWrapper(LookupLevel curr_lookup_level);
     Event* LongDescEventByLevel[4];
@@ -949,6 +948,8 @@ class TableWalker : public MemObject
     bool fetchDescriptor(Addr descAddr, uint8_t *data, int numBytes,
         Request::Flags flags, int queueIndex, Event *event,
         void (TableWalker::*doDescriptor)());
+
+    Fault generateLongDescFault(ArmFault::FaultSource src);
 
     void insertTableEntry(DescriptorBase &descriptor, bool longDescriptor);
 
@@ -960,7 +961,7 @@ class TableWalker : public MemObject
     static bool checkAddrSizeFaultAArch64(Addr addr, int currPhysAddrRange);
     Fault processWalkAArch64();
     void processWalkWrapper();
-    EventWrapper<TableWalker, &TableWalker::processWalkWrapper> doProcessEvent;
+    EventFunctionWrapper doProcessEvent;
 
     void nextWalk(ThreadContext *tc);
 

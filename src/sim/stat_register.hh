@@ -33,12 +33,10 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Bardsley
  */
 
 /* Provide a mechanism to register the Python stats reset/dump functions
- * defined in src/swig/python/stats.i with the mechanisms in namespace
+ * defined in src/python/pybind11/stats.cc with the mechanisms in namespace
  * Stats */
 
 #ifndef __SIM_STAT_REGISTER_H__

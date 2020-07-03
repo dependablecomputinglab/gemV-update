@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013 ARM Limited
+ * Copyright (c) 2012-2013,2017-2019 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -37,10 +37,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ron Dreslinski
- *          Steve Reinhardt
- *          Ali Saidi
  */
 
 /**
@@ -55,8 +51,9 @@
 #include <cassert>
 #include <climits>
 
+#include "base/amo.hh"
 #include "base/flags.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/types.hh"
 #include "cpu/inst_seq.hh"
 #include "sim/core.hh"
@@ -79,15 +76,17 @@ namespace ContextSwitchTaskId {
     };
 }
 
+class Packet;
 class Request;
+class ThreadContext;
 
-typedef Request* RequestPtr;
+typedef std::shared_ptr<Request> RequestPtr;
 typedef uint16_t MasterID;
 
 class Request
 {
   public:
-    typedef uint32_t FlagsType;
+    typedef uint64_t FlagsType;
     typedef uint8_t ArchFlagsType;
     typedef ::Flags<FlagsType> Flags;
 
@@ -122,8 +121,6 @@ class Request
          * the UNCACHEABLE flag is set as well.
          */
         STRICT_ORDER                = 0x00000800,
-        /** This request is to a memory mapped register. */
-        MMAPPED_IPR                 = 0x00002000,
         /** This request is made in privileged mode. */
         PRIVILEGED                  = 0x00008000,
 
@@ -171,16 +168,24 @@ class Request
           */
         KERNEL                      = 0x00001000,
 
-        /**
-         * The request should be handled by the generic IPR code (only
-         * valid together with MMAPPED_IPR)
-         */
-        GENERIC_IPR                 = 0x08000000,
-
         /** The request targets the secure memory space. */
         SECURE                      = 0x10000000,
         /** The request is a page table walk */
         PT_WALK                     = 0x20000000,
+
+        /** The request invalidates a memory location */
+        INVALIDATE                  = 0x0000000100000000,
+        /** The request cleans a memory location */
+        CLEAN                       = 0x0000000200000000,
+
+        /** The request targets the point of unification */
+        DST_POU                     = 0x0000001000000000,
+
+        /** The request targets the point of coherence */
+        DST_POC                     = 0x0000002000000000,
+
+        /** Bits to define the destination of a request */
+        DST_BITS                    = 0x0000003000000000,
 
         /**
          * These flags are *not* cleared when a Request object is
@@ -188,6 +193,8 @@ class Request
          */
         STICKY_FLAGS = INST_FETCH
     };
+    static const FlagsType STORE_NO_DATA = CACHE_BLOCK_ZERO |
+        CLEAN | INVALIDATE;
 
     /** Master Ids that are statically allocated
      * @{*/
@@ -240,8 +247,11 @@ class Request
         ARG_SEGMENT            = 0x00000800,
     };
 
+    using LocalAccessor =
+        std::function<Cycles(ThreadContext *tc, Packet *pkt)>;
+
   private:
-    typedef uint8_t PrivateFlagsType;
+    typedef uint16_t PrivateFlagsType;
     typedef ::Flags<PrivateFlagsType> PrivateFlags;
 
     enum : PrivateFlagsType {
@@ -249,7 +259,7 @@ class Request
         VALID_SIZE           = 0x00000001,
         /** Whether or not paddr is valid (has been written yet). */
         VALID_PADDR          = 0x00000002,
-        /** Whether or not the vaddr & asid are valid. */
+        /** Whether or not the vaddr is valid. */
         VALID_VADDR          = 0x00000004,
         /** Whether or not the instruction sequence number is valid. */
         VALID_INST_SEQ_NUM   = 0x00000008,
@@ -259,6 +269,9 @@ class Request
         VALID_CONTEXT_ID     = 0x00000020,
         /** Whether or not the sc result is valid. */
         VALID_EXTRA_DATA     = 0x00000080,
+        /** Whether or not the stream ID and substream ID is valid. */
+        VALID_STREAM_ID      = 0x00000100,
+        VALID_SUBSTREAM_ID   = 0x00000200,
         /**
          * These flags are *not* cleared when a Request object is reused
          * (assigned a new address).
@@ -269,42 +282,25 @@ class Request
   private:
 
     /**
-     * Set up a physical (e.g. device) request in a previously
-     * allocated Request object.
-     */
-    void
-    setPhys(Addr paddr, unsigned size, Flags flags, MasterID mid, Tick time)
-    {
-        _paddr = paddr;
-        _size = size;
-        _time = time;
-        _masterId = mid;
-        _flags.clear(~STICKY_FLAGS);
-        _flags.set(flags);
-        privateFlags.clear(~STICKY_PRIVATE_FLAGS);
-        privateFlags.set(VALID_PADDR|VALID_SIZE);
-        depth = 0;
-        accessDelta = 0;
-        //translateDelta = 0;
-    }
-
-    /**
      * The physical address of the request. Valid only if validPaddr
      * is set.
      */
-    Addr _paddr;
+    Addr _paddr = 0;
 
     /**
      * The size of the request. This field must be set when vaddr or
-     * paddr is written via setVirt() or setPhys(), so it is always
-     * valid as long as one of the address fields is valid.
+     * paddr is written via setVirt() or a phys basec constructor, so it is
+     * always valid as long as one of the address fields is valid.
      */
-    unsigned _size;
+    unsigned _size = 0;
+
+    /** Byte-enable mask for writes. */
+    std::vector<bool> _byteEnable;
 
     /** The requestor ID which is unique in the system for all ports
      * that are capable of issuing a transaction
      */
-    MasterID _masterId;
+    MasterID _masterId = invldMasterId;
 
     /** Flag structure for the request. */
     Flags _flags;
@@ -320,35 +316,49 @@ class Request
      * latencies. This field is set to curTick() any time paddr or vaddr
      * is written.
      */
-    Tick _time;
+    Tick _time = MaxTick;
 
     /**
      * The task id associated with this request
      */
-    uint32_t _taskId;
+    uint32_t _taskId = ContextSwitchTaskId::Unknown;
 
-    /** The address space ID. */
-    int _asid;
+    /**
+     * The stream ID uniquely identifies a device behind the
+     * SMMU/IOMMU Each transaction arriving at the SMMU/IOMMU is
+     * associated with exactly one stream ID.
+     */
+    uint32_t _streamId = 0;
+
+    /**
+     * The substream ID identifies an "execution context" within a
+     * device behind an SMMU/IOMMU. It's intended to map 1-to-1 to
+     * PCIe PASID (Process Address Space ID). The presence of a
+     * substream ID is optional.
+     */
+    uint32_t _substreamId = 0;
 
     /** The virtual address of the request. */
-    Addr _vaddr;
+    Addr _vaddr = MaxAddr;
 
     /**
      * Extra data for the request, such as the return value of
      * store conditional or the compare value for a CAS. */
-    uint64_t _extraData;
+    uint64_t _extraData = 0;
 
     /** The context ID (for statistics, locks, and wakeups). */
-    ContextID _contextId;
+    ContextID _contextId = InvalidContextID;
 
     /** program counter of initiating access; for tracing/debugging */
-    Addr _pc;
+    Addr _pc = MaxAddr;
 
     /** Sequence number of the instruction that creates the request */
-    InstSeqNum _reqInstSeqNum;
+    InstSeqNum _reqInstSeqNum = 0;
 
     /** A pointer to an atomic operation */
-    AtomicOpFunctor *atomicOpFunctor;
+    AtomicOpFunctorPtr atomicOpFunctor = nullptr;
+
+    LocalAccessor _localAccessor;
 
   public:
     //HwiSoo
@@ -361,90 +371,48 @@ class Request
      *  _flags and privateFlags are cleared by Flags default
      *  constructor.)
      */
-    Request()
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(0),
-          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
-    {}
-
-    Request(Addr paddr, unsigned size, Flags flags, MasterID mid,
-            InstSeqNum seq_num, ContextID cid)
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(0),
-          _reqInstSeqNum(seq_num), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
-    {
-        setPhys(paddr, size, flags, mid, curTick());
-        setContext(cid);
-        privateFlags.set(VALID_INST_SEQ_NUM);
-    }
+    Request() {}
 
     /**
      * Constructor for physical (e.g. device) requests.  Initializes
      * just physical address, size, flags, and timestamp (to curTick()).
      * These fields are adequate to perform a request.
      */
-    Request(Addr paddr, unsigned size, Flags flags, MasterID mid)
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(0),
-          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
+    Request(Addr paddr, unsigned size, Flags flags, MasterID mid) :
+        _paddr(paddr), _size(size), _masterId(mid), _time(curTick())
     {
-        setPhys(paddr, size, flags, mid, curTick());
+        _flags.set(flags);
+        privateFlags.set(VALID_PADDR|VALID_SIZE);
     }
 
-    Request(Addr paddr, unsigned size, Flags flags, MasterID mid, Tick time)
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(0),
-          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
+    Request(Addr vaddr, unsigned size, Flags flags,
+            MasterID mid, Addr pc, ContextID cid,
+            AtomicOpFunctorPtr atomic_op=nullptr)
     {
-        setPhys(paddr, size, flags, mid, time);
-    }
-
-    Request(Addr paddr, unsigned size, Flags flags, MasterID mid, Tick time,
-            Addr pc)
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(pc),
-          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
-    {
-        setPhys(paddr, size, flags, mid, time);
-        privateFlags.set(VALID_PC);
-    }
-
-    Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
-            Addr pc, ContextID cid)
-        : _paddr(0), _size(0), _masterId(invldMasterId), _time(0),
-          _taskId(ContextSwitchTaskId::Unknown), _asid(0), _vaddr(0),
-          _extraData(0), _contextId(0), _pc(0),
-          _reqInstSeqNum(0), atomicOpFunctor(nullptr), translateDelta(0),
-          accessDelta(0), depth(0)
-    {
-        setVirt(asid, vaddr, size, flags, mid, pc);
+        setVirt(vaddr, size, flags, mid, pc, std::move(atomic_op));
         setContext(cid);
     }
 
-    Request(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
-            Addr pc, ContextID cid, AtomicOpFunctor *atomic_op)
-        : atomicOpFunctor(atomic_op)
+    Request(const Request& other)
+        : _paddr(other._paddr), _size(other._size),
+          _byteEnable(other._byteEnable),
+          _masterId(other._masterId),
+          _flags(other._flags),
+          _memSpaceConfigFlags(other._memSpaceConfigFlags),
+          privateFlags(other.privateFlags),
+          _time(other._time),
+          _taskId(other._taskId), _vaddr(other._vaddr),
+          _extraData(other._extraData), _contextId(other._contextId),
+          _pc(other._pc), _reqInstSeqNum(other._reqInstSeqNum),
+          _localAccessor(other._localAccessor),
+          translateDelta(other.translateDelta),
+          accessDelta(other.accessDelta), depth(other.depth)
     {
-        setVirt(asid, vaddr, size, flags, mid, pc);
-        setContext(cid);
+        atomicOpFunctor.reset(other.atomicOpFunctor ?
+                                other.atomicOpFunctor->clone() : nullptr);
     }
 
-    ~Request()
-    {
-        if (hasAtomicOpFunctor()) {
-            delete atomicOpFunctor;
-        }
-    }
+    ~Request() {}
 
     /**
      * Set up Context numbers.
@@ -456,15 +424,29 @@ class Request
         privateFlags.set(VALID_CONTEXT_ID);
     }
 
+    void
+    setStreamId(uint32_t sid)
+    {
+        _streamId = sid;
+        privateFlags.set(VALID_STREAM_ID);
+    }
+
+    void
+    setSubStreamId(uint32_t ssid)
+    {
+        assert(privateFlags.isSet(VALID_STREAM_ID));
+        _substreamId = ssid;
+        privateFlags.set(VALID_SUBSTREAM_ID);
+    }
+
     /**
      * Set up a virtual (e.g., CPU) request in a previously
      * allocated Request object.
      */
     void
-    setVirt(int asid, Addr vaddr, unsigned size, Flags flags, MasterID mid,
-            Addr pc)
+    setVirt(Addr vaddr, unsigned size, Flags flags, MasterID mid, Addr pc,
+            AtomicOpFunctorPtr amo_op=nullptr)
     {
-        _asid = asid;
         _vaddr = vaddr;
         _size = size;
         _masterId = mid;
@@ -478,14 +460,13 @@ class Request
         depth = 0;
         accessDelta = 0;
         translateDelta = 0;
+        atomicOpFunctor = std::move(amo_op);
+        _localAccessor = nullptr;
     }
 
     /**
-     * Set just the physical address.  This usually used to record the
-     * result of a translation. However, when using virtualized CPUs
-     * setPhys() is sometimes called to finalize a physical address
-     * without a virtual address, so we can't check if the virtual
-     * address is valid.
+     * Set just the physical address. This usually used to record the
+     * result of a translation.
      */
     void
     setPaddr(Addr paddr)
@@ -498,16 +479,27 @@ class Request
      * Generate two requests as if this request had been split into two
      * pieces. The original request can't have been translated already.
      */
+    // TODO: this function is still required by TimingSimpleCPU - should be
+    // removed once TimingSimpleCPU will support arbitrarily long multi-line
+    // mem. accesses
     void splitOnVaddr(Addr split_addr, RequestPtr &req1, RequestPtr &req2)
     {
         assert(privateFlags.isSet(VALID_VADDR));
         assert(privateFlags.noneSet(VALID_PADDR));
         assert(split_addr > _vaddr && split_addr < _vaddr + _size);
-        req1 = new Request(*this);
-        req2 = new Request(*this);
+        req1 = std::make_shared<Request>(*this);
+        req2 = std::make_shared<Request>(*this);
         req1->_size = split_addr - _vaddr;
         req2->_vaddr = split_addr;
         req2->_size = _size - req1->_size;
+        if (!_byteEnable.empty()) {
+            req1->_byteEnable = std::vector<bool>(
+                _byteEnable.begin(),
+                _byteEnable.begin() + req1->_size);
+            req2->_byteEnable = std::vector<bool>(
+                _byteEnable.begin() + req1->_size,
+                _byteEnable.end());
+        }
     }
 
     /**
@@ -529,19 +521,19 @@ class Request
     /**
      * Time for the TLB/table walker to successfully translate this request.
      */
-    Tick translateDelta;
+    Tick translateDelta = 0;
 
     /**
      * Access latency to complete this memory transaction not including
      * translation time.
      */
-    Tick accessDelta;
+    Tick accessDelta = 0;
 
     /**
      * Level of the cache hierachy where this request was responded to
      * (e.g. 0 = L1; 1 = L2).
      */
-    mutable int depth;
+    mutable int depth = 0;
 
     /**
      *  Accessor for size.
@@ -559,6 +551,33 @@ class Request
         return _size;
     }
 
+    const std::vector<bool>&
+    getByteEnable() const
+    {
+        return _byteEnable;
+    }
+
+    void
+    setByteEnable(const std::vector<bool>& be)
+    {
+        assert(be.empty() || be.size() == _size);
+        _byteEnable = be;
+    }
+
+    /**
+     * Returns true if the memory request is masked, which means
+     * there is at least one byteEnable element which is false
+     * (byte is masked)
+     */
+    bool
+    isMasked() const
+    {
+        return std::find(
+            _byteEnable.begin(),
+            _byteEnable.end(),
+            false) != _byteEnable.end();
+    }
+
     /** Accessor for time. */
     Tick
     time() const
@@ -567,20 +586,31 @@ class Request
         return _time;
     }
 
+    /** Is this request for a local memory mapped resource/register? */
+    bool isLocalAccess() { return (bool)_localAccessor; }
+    /** Set the function which will enact that access. */
+    void setLocalAccessor(LocalAccessor acc) { _localAccessor = acc; }
+    /** Perform the installed local access. */
+    Cycles
+    localAccessor(ThreadContext *tc, Packet *pkt)
+    {
+        return _localAccessor(tc, pkt);
+    }
+
     /**
      * Accessor for atomic-op functor.
      */
     bool
     hasAtomicOpFunctor()
     {
-        return atomicOpFunctor != NULL;
+        return (bool)atomicOpFunctor;
     }
 
     AtomicOpFunctor *
     getAtomicOpFunctor()
     {
-        assert(atomicOpFunctor != NULL);
-        return atomicOpFunctor;
+        assert(atomicOpFunctor);
+        return atomicOpFunctor.get();
     }
 
     /** Accessor for flags. */
@@ -641,21 +671,6 @@ class Request
         _taskId = id;
     }
 
-    /** Accessor function for asid.*/
-    int
-    getAsid() const
-    {
-        assert(privateFlags.isSet(VALID_VADDR));
-        return _asid;
-    }
-
-    /** Accessor function for asid.*/
-    void
-    setAsid(int asid)
-    {
-        _asid = asid;
-    }
-
     /** Accessor function for architecture-specific flags.*/
     ArchFlagsType
     getArchFlags() const
@@ -699,6 +714,26 @@ class Request
     {
         assert(privateFlags.isSet(VALID_CONTEXT_ID));
         return _contextId;
+    }
+
+    uint32_t
+    streamId() const
+    {
+        assert(privateFlags.isSet(VALID_STREAM_ID));
+        return _streamId;
+    }
+
+    bool
+    hasSubstreamId() const
+    {
+        return privateFlags.isSet(VALID_SUBSTREAM_ID);
+    }
+
+    uint32_t
+    substreamId() const
+    {
+        assert(privateFlags.isSet(VALID_SUBSTREAM_ID));
+        return _substreamId;
     }
 
     void
@@ -771,13 +806,14 @@ class Request
     bool isUncacheable() const { return _flags.isSet(UNCACHEABLE); }
     bool isStrictlyOrdered() const { return _flags.isSet(STRICT_ORDER); }
     bool isInstFetch() const { return _flags.isSet(INST_FETCH); }
-    bool isPrefetch() const { return _flags.isSet(PREFETCH); }
+    bool isPrefetch() const { return (_flags.isSet(PREFETCH) ||
+                                      _flags.isSet(PF_EXCLUSIVE)); }
+    bool isPrefetchEx() const { return _flags.isSet(PF_EXCLUSIVE); }
     bool isLLSC() const { return _flags.isSet(LLSC); }
     bool isPriv() const { return _flags.isSet(PRIVILEGED); }
     bool isLockedRMW() const { return _flags.isSet(LOCKED_RMW); }
     bool isSwap() const { return _flags.isSet(MEM_SWAP|MEM_SWAP_COND); }
     bool isCondSwap() const { return _flags.isSet(MEM_SWAP_COND); }
-    bool isMmappedIpr() const { return _flags.isSet(MMAPPED_IPR); }
     bool isSecure() const { return _flags.isSet(SECURE); }
     bool isPTWalk() const { return _flags.isSet(PT_WALK); }
     bool isAcquire() const { return _flags.isSet(ACQUIRE); }
@@ -792,6 +828,17 @@ class Request
         return _flags.isSet(ATOMIC_RETURN_OP) ||
                _flags.isSet(ATOMIC_NO_RETURN_OP);
     }
+
+    /**
+     * Accessor functions for the destination of a memory request. The
+     * destination flag can specify a point of reference for the
+     * operation (e.g. a cache block clean to the the point of
+     * unification). At the moment the destination is only used by the
+     * cache maintenance operations.
+     */
+    bool isToPOU() const { return _flags.isSet(DST_POU); }
+    bool isToPOC() const { return _flags.isSet(DST_POC); }
+    Flags getDest() const { return _flags & DST_BITS; }
 
     /**
      * Accessor functions for the memory space configuration flags and used by
@@ -873,6 +920,23 @@ class Request
     {
         return _memSpaceConfigFlags.isSet(ARG_SEGMENT);
     }
+
+    /**
+     * Accessor functions to determine whether this request is part of
+     * a cache maintenance operation. At the moment three operations
+     * are supported:
+
+     * 1) A cache clean operation updates all copies of a memory
+     * location to the point of reference,
+     * 2) A cache invalidate operation invalidates all copies of the
+     * specified block in the memory above the point of reference,
+     * 3) A clean and invalidate operation is a combination of the two
+     * operations.
+     * @{ */
+    bool isCacheClean() const { return _flags.isSet(CLEAN); }
+    bool isCacheInvalidate() const { return _flags.isSet(INVALIDATE); }
+    bool isCacheMaintenance() const { return _flags.isSet(CLEAN|INVALIDATE); }
+    /** @} */
 };
 
 #endif // __MEM_REQUEST_HH__

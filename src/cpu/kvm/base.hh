@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #ifndef __CPU_KVM_BASE_HH__
@@ -52,6 +50,7 @@
 #include "cpu/kvm/vm.hh"
 #include "cpu/base.hh"
 #include "cpu/simple_thread.hh"
+#include "sim/faults.hh"
 
 /** Signal to use to trigger exits from KVM */
 #define KVM_KICK_SIGNAL SIGRTMIN
@@ -97,8 +96,8 @@ class BaseKvmCPU : public BaseCPU
 
     void verifyMemoryMode() const override;
 
-    MasterPort &getDataPort() override { return dataPort; }
-    MasterPort &getInstPort() override { return instPort; }
+    Port &getDataPort() override { return dataPort; }
+    Port &getInstPort() override { return instPort; }
 
     void wakeup(ThreadID tid = 0) override;
     void activateContext(ThreadID thread_num) override;
@@ -419,6 +418,16 @@ class BaseKvmCPU : public BaseCPU
     void syncThreadContext();
 
     /**
+     * Get a pointer to the event queue owning devices.
+     *
+     * Devices always live in a separate device event queue when
+     * running in multi-core mode. We need to temporarily migrate to
+     * this queue when accessing devices. By convention, devices and
+     * the VM use the same event queue.
+     */
+    EventQueue *deviceEventQueue() { return vm.eventQueue(); }
+
+    /**
      * Update the KVM if the thread context is dirty.
      */
     void syncKvmState();
@@ -630,20 +639,6 @@ class BaseKvmCPU : public BaseCPU
     pthread_t vcpuThread;
 
   private:
-    struct TickEvent : public Event
-    {
-        BaseKvmCPU &cpu;
-
-        TickEvent(BaseKvmCPU &c)
-            : Event(CPU_Tick_Pri), cpu(c) {}
-
-        void process() { cpu.tick(); }
-
-        const char *description() const {
-            return "BaseKvmCPU tick";
-        }
-    };
-
     /**
      * Service MMIO requests in the mmioRing.
      *
@@ -708,7 +703,7 @@ class BaseKvmCPU : public BaseCPU
     /** Cached page size of the host */
     const long pageSize;
 
-    TickEvent tickEvent;
+    EventFunctionWrapper tickEvent;
 
     /**
      * Setup an instruction break if there is one pending.

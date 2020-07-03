@@ -1,4 +1,4 @@
-# Copyright (c) 2015 ARM Limited
+# Copyright (c) 2015, 2020 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -32,8 +32,8 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
+
+from __future__ import print_function
 
 from multiprocessing import Process
 import sys
@@ -80,7 +80,7 @@ def _run_step(name, restore=None, interval=0.5):
     elif cause in _exit_normal:
         sys.exit(_exitcode_done)
     else:
-        print "Test failed: Unknown exit cause: %s" % cause
+        print("Test failed: Unknown exit cause: %s" % cause)
         sys.exit(_exitcode_fail)
 
 def run_test(root, interval=0.5, max_checkpoints=5):
@@ -92,6 +92,7 @@ def run_test(root, interval=0.5, max_checkpoints=5):
 
     cpt_name = os.path.join(m5.options.outdir, "test.cpt")
     restore = None
+    checkpointed = False
 
     for cpt_no in range(max_checkpoints):
         # Create a checkpoint from a separate child process. This enables
@@ -112,12 +113,17 @@ def run_test(root, interval=0.5, max_checkpoints=5):
         restore = cpt_name
 
         if p.exitcode == _exitcode_done:
-            print >> sys.stderr, "Test done."
-            sys.exit(0)
+            if checkpointed:
+                print("Test done.", file=sys.stderr)
+                sys.exit(0)
+            else:
+                print("Test done, but no checkpoint was created.",
+                    file=sys.stderr)
+                sys.exit(1)
         elif p.exitcode == _exitcode_checkpoint:
-            pass
+            checkpointed = True
         else:
-            print >> sys.stderr, "Test failed."
+            print("Test failed.", file=sys.stderr)
             sys.exit(1)
 
     # Maximum number of checkpoints reached. Just run full-speed from
@@ -128,5 +134,5 @@ def run_test(root, interval=0.5, max_checkpoints=5):
     if cause in _exit_normal:
         sys.exit(0)
     else:
-        print "Test failed: Unknown exit cause: %s" % cause
+        print("Test failed: Unknown exit cause: %s" % cause)
         sys.exit(1)

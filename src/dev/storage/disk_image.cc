@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 /** @file
@@ -44,7 +42,7 @@
 #include <string>
 
 #include "base/callback.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/DiskImageRead.hh"
 #include "debug/DiskImageWrite.hh"
@@ -446,7 +444,7 @@ CowDiskImage::unserialize(CheckpointIn &cp)
 {
     string cowFilename;
     UNSERIALIZE_SCALAR(cowFilename);
-    cowFilename = cp.cptDir + "/" + cowFilename;
+    cowFilename = cp.getCptDir() + "/" + cowFilename;
     open(cowFilename);
 }
 

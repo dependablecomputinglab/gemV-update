@@ -24,23 +24,15 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Alexandru Dutu
  */
 
 #include "arch/generic/pseudo_inst.hh"
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 
 class ThreadContext;
 
 using namespace GenericISA;
-
-void
-GenericISA::m5Syscall(ThreadContext *tc)
-{
-    panic("m5Syscall not implemented for current ISA");
-}
 
 void
 GenericISA::m5PageFault(ThreadContext *tc)

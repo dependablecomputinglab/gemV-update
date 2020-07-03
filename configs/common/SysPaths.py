@@ -23,59 +23,59 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Ali Saidi
 
+from __future__ import print_function
+from __future__ import absolute_import
+
+from six import string_types
 import os, sys
-from os.path import join as joinpath
-from os import environ as env
 
 config_path = os.path.dirname(os.path.abspath(__file__))
 config_root = os.path.dirname(config_path)
 
-def searchpath(path, filename):
-    for p in path:
-        f = joinpath(p, filename)
-        if os.path.exists(f):
-            return f
-    raise IOError, "Can't find file '%s' on path." % filename
+class PathSearchFunc(object):
+    _sys_paths = None
+    environment_variable = 'M5_PATH'
 
-def disk(filename):
-    system()
-    return searchpath(disk.path, filename)
+    def __init__(self, subdirs, sys_paths=None):
+        if isinstance(subdirs, string_types):
+            subdirs = [subdirs]
+        self._subdir = os.path.join(*subdirs)
+        if sys_paths:
+            self._sys_paths = sys_paths
 
-def binary(filename):
-    system()
-    return searchpath(binary.path, filename)
+    def __call__(self, filename):
+        if os.sep in filename:
+            return filename
+        else:
+            if self._sys_paths is None:
+                try:
+                    paths = os.environ[self.environment_variable].split(':')
+                except KeyError:
+                    paths = [ '/dist/m5/system', '/n/poolfs/z/dist/m5/system' ]
 
-def script(filename):
-    system()
-    return searchpath(script.path, filename)
+                # expand '~' and '~user' in paths
+                paths = list(map(os.path.expanduser, paths))
 
-def system():
-    if not system.path:
-        try:
-            path = env['M5_PATH'].split(':')
-        except KeyError:
-            path = [ '/dist/m5/system', '/n/poolfs/z/dist/m5/system' ]
+                # filter out non-existent directories
+                paths = list(filter(os.path.isdir, paths))
 
-        # expand '~' and '~user' in paths
-        path = map(os.path.expanduser, path)
+                if not paths:
+                    raise IOError(
+                        "Can't find system files directory, "
+                        "check your {} environment variable"
+                        .format(self.environment_variable))
 
-        # filter out non-existent directories
-        system.path = filter(os.path.isdir, path)
+                self._sys_paths = list(paths)
 
-        if not system.path:
-            raise IOError, "Can't find a path to system files."
+            filepath = os.path.join(self._subdir, filename)
+            paths = (os.path.join(p, filepath) for p in self._sys_paths)
+            try:
+                return next(p for p in paths if os.path.exists(p))
+            except StopIteration:
+                raise IOError("Can't find file '{}' on {}."
+                        .format(filename, self.environment_variable))
 
-    if not binary.path:
-        binary.path = [joinpath(p, 'binaries') for p in system.path]
-    if not disk.path:
-        disk.path = [joinpath(p, 'disks') for p in system.path]
-    if not script.path:
-        script.path = [joinpath(config_root, 'boot')]
-
-system.path = None
-binary.path = None
-disk.path = None
-script.path = None
+disk = PathSearchFunc('disks')
+binary = PathSearchFunc('binaries')
+script = PathSearchFunc('boot', sys_paths=[config_root])

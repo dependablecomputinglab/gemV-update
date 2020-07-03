@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2013 ARM Limited
+# Copyright (c) 2012-2013, 2017-2018 ARM Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -32,20 +32,22 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
-#          Andreas Hansson
 
 from abc import ABCMeta, abstractmethod
+import optparse
 import m5
 from m5.objects import *
 from m5.proxy import *
 m5.util.addToPath('../configs/')
 from common import FSConfig
+from common import Options
 from common.Caches import *
+from ruby import Ruby
+from six import add_metaclass
 
 _have_kvm_support = 'BaseKvmCPU' in globals()
 
+@add_metaclass(ABCMeta)
 class BaseSystem(object):
     """Base system builder.
 
@@ -55,12 +57,9 @@ class BaseSystem(object):
     the initialization process.
     """
 
-    __metaclass__ = ABCMeta
-
     def __init__(self, mem_mode='timing', mem_class=SimpleMemory,
                  cpu_class=TimingSimpleCPU, num_cpus=1, num_threads=1,
-                 checker=False,
-                 mem_size=None):
+                 checker=False, mem_size=None, use_ruby=False):
         """Initialize a simple base system.
 
         Keyword Arguments:
@@ -70,6 +69,7 @@ class BaseSystem(object):
           num_cpus -- Number of CPUs to instantiate
           checker -- Set to True to add checker CPUs
           mem_size -- Override the default memory size
+          use_ruby -- Set to True to use ruby memory
         """
         self.mem_mode = mem_mode
         self.mem_class = mem_class
@@ -77,6 +77,7 @@ class BaseSystem(object):
         self.num_cpus = num_cpus
         self.num_threads = num_threads
         self.checker = checker
+        self.use_ruby = use_ruby
 
     def create_cpus(self, cpu_clk_domain):
         """Return a list of CPU objects to add to a system."""
@@ -148,10 +149,41 @@ class BaseSystem(object):
                 any([isinstance(c, BaseKvmCPU) for c in system.cpu]):
             self.init_kvm(system)
 
-        sha_bus = self.create_caches_shared(system)
+        if self.use_ruby:
+            # Add the ruby specific and protocol specific options
+            parser = optparse.OptionParser()
+            Options.addCommonOptions(parser)
+            Ruby.define_options(parser)
+            (options, args) = parser.parse_args()
 
-        for cpu in system.cpu:
-            self.init_cpu(system, cpu, sha_bus)
+            # Set the default cache size and associativity to be very
+            # small to encourage races between requests and writebacks.
+            options.l1d_size="32kB"
+            options.l1i_size="32kB"
+            options.l2_size="4MB"
+            options.l1d_assoc=4
+            options.l1i_assoc=2
+            options.l2_assoc=8
+            options.num_cpus = self.num_cpus
+            options.num_dirs = 2
+
+            bootmem = getattr(system, '_bootmem', None)
+            Ruby.create_system(options, True, system, system.iobus,
+                               system._dma_ports, bootmem)
+
+            # Create a seperate clock domain for Ruby
+            system.ruby.clk_domain = SrcClockDomain(
+                clock = options.ruby_clock,
+                voltage_domain = system.voltage_domain)
+            for i, cpu in enumerate(system.cpu):
+                if not cpu.switched_out:
+                    cpu.createInterruptController()
+                    cpu.connectCachedPorts(system.ruby._cpu_ports[i])
+        else:
+            sha_bus = self.create_caches_shared(system)
+            for cpu in system.cpu:
+                self.init_cpu(system, cpu, sha_bus)
+
 
     def create_clk_src(self,system):
         # Create system clock domain. This provides clock value to every
@@ -183,17 +215,18 @@ class BaseSESystem(BaseSystem):
     """Basic syscall-emulation builder."""
 
     def __init__(self, **kwargs):
-        BaseSystem.__init__(self, **kwargs)
+        super(BaseSESystem, self).__init__(**kwargs)
 
     def init_system(self, system):
-        BaseSystem.init_system(self, system)
+        super(BaseSESystem, self).init_system(system)
 
     def create_system(self):
         system = System(physmem = self.mem_class(),
                         membus = SystemXBar(),
                         mem_mode = self.mem_mode,
                         multi_thread = (self.num_threads > 1))
-        system.system_port = system.membus.slave
+        if not self.use_ruby:
+            system.system_port = system.membus.slave
         system.physmem.port = system.membus.master
         self.init_system(system)
         return system
@@ -211,7 +244,7 @@ class BaseSESystemUniprocessor(BaseSESystem):
     """
 
     def __init__(self, **kwargs):
-        BaseSESystem.__init__(self, **kwargs)
+        super(BaseSESystemUniprocessor, self).__init__(**kwargs)
 
     def create_caches_private(self, cpu):
         # The atomic SE configurations do not use caches
@@ -228,22 +261,27 @@ class BaseFSSystem(BaseSystem):
     """Basic full system builder."""
 
     def __init__(self, **kwargs):
-        BaseSystem.__init__(self, **kwargs)
+        super(BaseFSSystem, self).__init__(**kwargs)
 
     def init_system(self, system):
-        BaseSystem.init_system(self, system)
+        super(BaseFSSystem, self).init_system(system)
 
-        # create the memory controllers and connect them, stick with
-        # the physmem name to avoid bumping all the reference stats
-        system.physmem = [self.mem_class(range = r)
-                          for r in system.mem_ranges]
-        for i in xrange(len(system.physmem)):
-            system.physmem[i].port = system.membus.master
+        if self.use_ruby:
+            # Connect the ruby io port to the PIO bus,
+            # assuming that there is just one such port.
+            system.iobus.master = system.ruby._io_port.slave
+        else:
+            # create the memory controllers and connect them, stick with
+            # the physmem name to avoid bumping all the reference stats
+            system.physmem = [self.mem_class(range = r)
+                              for r in system.mem_ranges]
+            for i in range(len(system.physmem)):
+                system.physmem[i].port = system.membus.master
 
-        # create the iocache, which by default runs at the system clock
-        system.iocache = IOCache(addr_ranges=system.mem_ranges)
-        system.iocache.cpu_side = system.iobus.master
-        system.iocache.mem_side = system.membus.slave
+            # create the iocache, which by default runs at the system clock
+            system.iocache = IOCache(addr_ranges=system.mem_ranges)
+            system.iocache.cpu_side = system.iobus.master
+            system.iocache.mem_side = system.membus.slave
 
     def create_root(self):
         system = self.create_system()
@@ -258,7 +296,7 @@ class BaseFSSystemUniprocessor(BaseFSSystem):
     """
 
     def __init__(self, **kwargs):
-        BaseFSSystem.__init__(self, **kwargs)
+        super(BaseFSSystemUniprocessor, self).__init__(**kwargs)
 
     def create_caches_private(self, cpu):
         cpu.addTwoLevelCacheHierarchy(L1_ICache(size='32kB', assoc=1),
@@ -272,7 +310,7 @@ class BaseFSSwitcheroo(BaseFSSystem):
     """Uniprocessor system prepared for CPU switching"""
 
     def __init__(self, cpu_classes, **kwargs):
-        BaseFSSystem.__init__(self, **kwargs)
+        super(BaseFSSwitcheroo, self).__init__(**kwargs)
         self.cpu_classes = tuple(cpu_classes)
 
     def create_cpus(self, cpu_clk_domain):

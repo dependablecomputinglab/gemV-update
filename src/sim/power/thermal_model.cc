@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: David Guillen Fandos
  */
 
 #include "sim/power/thermal_model.hh"
@@ -194,7 +192,7 @@ ThermalCapacitor::getEquation(ThermalNode * n, unsigned nnodes,
  * ThermalModel
  */
 ThermalModel::ThermalModel(const Params *p)
-    : ClockedObject(p), stepEvent(this), _step(p->step)
+    : ClockedObject(p), stepEvent([this]{ doStep(); }, name()), _step(p->step)
 {
 }
 

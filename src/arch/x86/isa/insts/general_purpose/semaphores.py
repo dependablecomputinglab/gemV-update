@@ -33,8 +33,6 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Gabe Black
 
 microcode = '''
 def macroop CMPXCHG_R_R {
@@ -132,6 +130,7 @@ def macroop XADD_R_R {
 # of dataSize.
 cmpxchg8bCode = '''
 def macroop CMPXCHG8B_%(suffix)s {
+    .adjust_env clampOsz
     %(rdip)s
     lea t1, seg, %(sib)s, disp, dataSize=asz
     ldsplit%(l)s (t2, t3), seg, [1, t0, t1], disp=0

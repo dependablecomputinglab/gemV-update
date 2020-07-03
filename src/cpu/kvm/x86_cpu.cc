@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #include "cpu/kvm/x86_cpu.hh"
@@ -38,6 +36,8 @@
 
 #include "arch/registers.hh"
 #include "arch/x86/cpuid.hh"
+#include "arch/x86/faults.hh"
+#include "arch/x86/interrupts.hh"
 #include "arch/x86/regs/msr.hh"
 #include "arch/x86/utility.hh"
 #include "cpu/kvm/base.hh"
@@ -396,6 +396,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_ES:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_CS:
         if (seg.base & 0xffffffff00000000ULL)
             warn("Illegal %s base: 0x%x\n", name, seg.base);
@@ -433,7 +434,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
           case 3:
             if (sregs.cs.type == 3 && seg.dpl != 0)
                 warn("CS type is 3, but SS DPL is != 0.\n");
-            /* FALLTHROUGH */
+            M5_FALLTHROUGH;
           case 7:
             if (!(sregs.cr0 & 1) && seg.dpl != 0)
                 warn("SS DPL is %i, but CR0 PE is 0\n", seg.dpl);
@@ -477,6 +478,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_GS:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_CS:
         if (!seg.s)
             warn("%s: S flag not set\n", name);
@@ -485,6 +487,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_TSL:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_TR:
         if (seg.s)
             warn("%s: S flag is set\n", name);
@@ -500,6 +503,7 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
       case MISCREG_TSL:
         if (seg.unusable)
             break;
+        M5_FALLTHROUGH;
       case MISCREG_TR:
       case MISCREG_CS:
         if (!seg.present)
@@ -819,9 +823,6 @@ template <typename T>
 static void
 updateKvmStateFPUCommon(ThreadContext *tc, T &fpu)
 {
-    static_assert(sizeof(X86ISA::FloatRegBits) == 8,
-                  "Unexpected size of X86ISA::FloatRegBits");
-
     fpu.mxcsr = tc->readMiscRegNoEffect(MISCREG_MXCSR);
     fpu.fcw = tc->readMiscRegNoEffect(MISCREG_FCW);
     // No need to rebuild from MISCREG_FSW and MISCREG_TOP if we read
@@ -836,7 +837,8 @@ updateKvmStateFPUCommon(ThreadContext *tc, T &fpu)
     const unsigned top((fpu.fsw >> 11) & 0x7);
     for (int i = 0; i < 8; ++i) {
         const unsigned reg_idx((i + top) & 0x7);
-        const double value(tc->readFloatReg(FLOATREG_FPR(reg_idx)));
+        const double value(bitsToFloat64(
+                    tc->readFloatReg(FLOATREG_FPR(reg_idx))));
         DPRINTF(KvmContext, "Setting KVM FP reg %i (st[%i]) := %f\n",
                 reg_idx, i, value);
         X86ISA::storeFloat80(fpu.fpr[i], value);
@@ -845,10 +847,10 @@ updateKvmStateFPUCommon(ThreadContext *tc, T &fpu)
     // TODO: We should update the MMX state
 
     for (int i = 0; i < 16; ++i) {
-        *(X86ISA::FloatRegBits *)&fpu.xmm[i][0] =
-            tc->readFloatRegBits(FLOATREG_XMM_LOW(i));
-        *(X86ISA::FloatRegBits *)&fpu.xmm[i][8] =
-            tc->readFloatRegBits(FLOATREG_XMM_HIGH(i));
+        *(uint64_t *)&fpu.xmm[i][0] =
+            tc->readFloatReg(FLOATREG_XMM_LOW(i));
+        *(uint64_t *)&fpu.xmm[i][8] =
+            tc->readFloatReg(FLOATREG_XMM_HIGH(i));
     }
 }
 
@@ -1043,15 +1045,12 @@ updateThreadContextFPUCommon(ThreadContext *tc, const T &fpu)
 {
     const unsigned top((fpu.fsw >> 11) & 0x7);
 
-    static_assert(sizeof(X86ISA::FloatRegBits) == 8,
-                  "Unexpected size of X86ISA::FloatRegBits");
-
     for (int i = 0; i < 8; ++i) {
         const unsigned reg_idx((i + top) & 0x7);
         const double value(X86ISA::loadFloat80(fpu.fpr[i]));
         DPRINTF(KvmContext, "Setting gem5 FP reg %i (st[%i]) := %f\n",
                 reg_idx, i, value);
-        tc->setFloatReg(FLOATREG_FPR(reg_idx), value);
+        tc->setFloatReg(FLOATREG_FPR(reg_idx), floatToBits64(value));
     }
 
     // TODO: We should update the MMX state
@@ -1069,10 +1068,8 @@ updateThreadContextFPUCommon(ThreadContext *tc, const T &fpu)
     tc->setMiscRegNoEffect(MISCREG_FOP, fpu.last_opcode);
 
     for (int i = 0; i < 16; ++i) {
-        tc->setFloatRegBits(FLOATREG_XMM_LOW(i),
-                            *(X86ISA::FloatRegBits *)&fpu.xmm[i][0]);
-        tc->setFloatRegBits(FLOATREG_XMM_HIGH(i),
-                            *(X86ISA::FloatRegBits *)&fpu.xmm[i][8]);
+        tc->setFloatReg(FLOATREG_XMM_LOW(i), *(uint64_t *)&fpu.xmm[i][0]);
+        tc->setFloatReg(FLOATREG_XMM_HIGH(i), *(uint64_t *)&fpu.xmm[i][8]);
     }
 }
 
@@ -1188,8 +1185,10 @@ X86KvmCPU::kvmRun(Tick ticks)
 {
     struct kvm_run &kvm_run(*getKvmRunState());
 
-    if (interrupts[0]->checkInterruptsRaw()) {
-        if (interrupts[0]->hasPendingUnmaskable()) {
+    auto *lapic = dynamic_cast<X86ISA::Interrupts *>(interrupts[0]);
+
+    if (lapic->checkInterruptsRaw()) {
+        if (lapic->hasPendingUnmaskable()) {
             DPRINTF(KvmInt,
                     "Delivering unmaskable interrupt.\n");
             syncThreadContext();
@@ -1201,7 +1200,7 @@ X86KvmCPU::kvmRun(Tick ticks)
             // the thread context and check if there are /really/
             // interrupts that should be delivered now.
             syncThreadContext();
-            if (interrupts[0]->checkInterrupts(tc)) {
+            if (lapic->checkInterrupts(tc)) {
                 DPRINTF(KvmInt,
                         "M5 has pending interrupts, delivering interrupt.\n");
 
@@ -1346,13 +1345,14 @@ X86KvmCPU::handleKvmExitIO()
     }
 
     const MemCmd cmd(isWrite ? MemCmd::WriteReq : MemCmd::ReadReq);
-    // Temporarily lock and migrate to the event queue of the
-    // VM. This queue is assumed to "own" all devices we need to
-    // access if running in multi-core mode.
-    EventQueue::ScopedMigration migrate(vm.eventQueue());
+    // Temporarily lock and migrate to the device event queue to
+    // prevent races in multi-core mode.
+    EventQueue::ScopedMigration migrate(deviceEventQueue());
     for (int i = 0; i < count; ++i) {
-        RequestPtr io_req = new Request(pAddr, kvm_run.io.size,
-                                        Request::UNCACHEABLE, dataMasterId());
+        RequestPtr io_req = std::make_shared<Request>(
+            pAddr, kvm_run.io.size,
+            Request::UNCACHEABLE, dataMasterId());
+
         io_req->setContext(tc->contextId());
 
         PacketPtr pkt = new Packet(io_req, cmd);

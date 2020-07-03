@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
  */
 
 #ifndef __BASE_CPRINTF_FORMATS_HH__
@@ -150,6 +148,9 @@ _format_float(std::ostream &out, const T &data, Format &fmt)
     using namespace std;
 
     ios::fmtflags flags(out.flags());
+
+    if (fmt.fill_zero)
+        out.fill('0');
 
     switch (fmt.float_format) {
       case Format::scientific:
@@ -309,32 +310,12 @@ format_integer(std::ostream &out, unsigned char data, Format &fmt)
 inline void
 format_integer(std::ostream &out, signed char data, Format &fmt)
 { _format_integer(out, (int)data, fmt); }
-#if 0
 inline void
-format_integer(std::ostream &out, short data, Format &fmt)
-{ _format_integer(out, data, fmt); }
+format_integer(std::ostream &out, const unsigned char *data, Format &fmt)
+{ _format_integer(out, (uintptr_t)data, fmt); }
 inline void
-format_integer(std::ostream &out, unsigned short data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, int data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, unsigned int data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, long data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, unsigned long data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, long long data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-inline void
-format_integer(std::ostream &out, unsigned long long data, Format &fmt)
-{ _format_integer(out, data, fmt); }
-#endif
+format_integer(std::ostream &out, const signed char *data, Format &fmt)
+{ _format_integer(out, (uintptr_t)data, fmt); }
 
 //
 // floating point formats
@@ -359,10 +340,6 @@ template <typename T>
 inline void
 format_string(std::ostream &out, const T &data, Format &fmt)
 { _format_string(out, data, fmt); }
-
-inline void
-format_string(std::ostream &out, const std::stringstream &data, Format &fmt)
-{ _format_string(out, data.str(), fmt); }
 
 } // namespace cp
 

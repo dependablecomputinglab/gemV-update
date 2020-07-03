@@ -36,9 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Andreas Sandberg
  */
 
 
@@ -50,7 +47,7 @@
 #define __DEV_ARM_PL011_H__
 
 #include "dev/arm/amba_device.hh"
-#include "dev/uart.hh"
+#include "dev/serial/uart.hh"
 
 class BaseGic;
 struct Pl011Params;
@@ -113,11 +110,13 @@ class Pl011 : public Uart, public AmbaDevice
     inline uint16_t maskInt() const { return rawInt & imsc; }
 
     /** Wrapper to create an event out of the thing */
-    EventWrapper<Pl011, &Pl011::generateInterrupt> intEvent;
+    EventFunctionWrapper intEvent;
 
   protected: // Registers
     static const uint64_t AMBA_ID = ULL(0xb105f00d00341011);
     static const int UART_DR = 0x000;
+    static const int UART_RSR = 0x004;
+    static const int UART_ECR = 0x004;
     static const int UART_FR = 0x018;
     static const int UART_FR_CTS  = 0x001;
     static const int UART_FR_RXFE = 0x010;
@@ -133,6 +132,7 @@ class Pl011 : public Uart, public AmbaDevice
     static const int UART_RIS  = 0x03C;
     static const int UART_MIS  = 0x040;
     static const int UART_ICR  = 0x044;
+    static const int UART_DMACR = 0x048;
 
     static const uint16_t UART_RIINTR = 1 << 0;
     static const uint16_t UART_CTSINTR = 1 << 1;

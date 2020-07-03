@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
 
 #include "cpu/kvm/device.hh"
@@ -46,7 +44,7 @@
 #include <cassert>
 #include <cerrno>
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 
 KvmDevice::KvmDevice(int _fd)
     : fd(_fd)

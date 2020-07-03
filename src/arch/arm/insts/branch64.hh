@@ -33,9 +33,8 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
+
 #ifndef __ARCH_ARM_INSTS_BRANCH64_HH__
 #define __ARCH_ARM_INSTS_BRANCH64_HH__
 
@@ -55,12 +54,14 @@ class BranchImm64 : public ArmStaticInst
         ArmStaticInst(mnem, _machInst, __opClass), imm(_imm)
     {}
 
-    ArmISA::PCState branchTarget(const ArmISA::PCState &branchPC) const;
+    ArmISA::PCState branchTarget(
+            const ArmISA::PCState &branchPC) const override;
 
     /// Explicitly import the otherwise hidden branchTarget
     using StaticInst::branchTarget;
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 // Conditionally Branch to a target computed with an immediate
@@ -75,7 +76,25 @@ class BranchImmCond64 : public BranchImm64
         BranchImm64(mnem, _machInst, __opClass, _imm), condCode(_condCode)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+};
+
+// Branch to a target computed with two registers
+class BranchRegReg64 : public ArmStaticInst
+{
+  protected:
+    IntRegIndex op1;
+    IntRegIndex op2;
+
+  public:
+    BranchRegReg64(const char *mnem, ExtMachInst _machInst, OpClass __opClass,
+                IntRegIndex _op1, IntRegIndex _op2) :
+        ArmStaticInst(mnem, _machInst, __opClass), op1(_op1), op2(_op2)
+    {}
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 // Branch to a target computed with a register
@@ -90,7 +109,8 @@ class BranchReg64 : public ArmStaticInst
         ArmStaticInst(mnem, _machInst, __opClass), op1(_op1)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 // Ret instruction
@@ -102,7 +122,21 @@ class BranchRet64 : public BranchReg64
         BranchReg64(mnem, _machInst, __opClass, _op1)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+};
+
+// RetAA/RetAB instruction
+class BranchRetA64 : public BranchRegReg64
+{
+  public:
+    BranchRetA64(const char *mnem, ExtMachInst _machInst, OpClass __opClass) :
+        BranchRegReg64(mnem, _machInst, __opClass, INTREG_X30,
+                       makeSP(INTREG_SPX))
+    {}
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 // Eret instruction
@@ -113,9 +147,24 @@ class BranchEret64 : public ArmStaticInst
         ArmStaticInst(mnem, _machInst, __opClass)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
+// EretA/B instruction
+class BranchEretA64 : public ArmStaticInst
+{
+  protected:
+    IntRegIndex op1;
+
+  public:
+    BranchEretA64(const char *mnem, ExtMachInst _machInst, OpClass __opClass) :
+        ArmStaticInst(mnem, _machInst, __opClass), op1(makeSP(INTREG_SPX))
+    {}
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+};
 // Branch to a target computed with an immediate and a register
 class BranchImmReg64 : public ArmStaticInst
 {
@@ -129,12 +178,14 @@ class BranchImmReg64 : public ArmStaticInst
         ArmStaticInst(mnem, _machInst, __opClass), imm(_imm), op1(_op1)
     {}
 
-    ArmISA::PCState branchTarget(const ArmISA::PCState &branchPC) const;
+    ArmISA::PCState branchTarget(
+            const ArmISA::PCState &branchPC) const override;
 
     /// Explicitly import the otherwise hidden branchTarget
     using StaticInst::branchTarget;
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 // Branch to a target computed with two immediates
@@ -153,12 +204,14 @@ class BranchImmImmReg64 : public ArmStaticInst
         imm1(_imm1), imm2(_imm2), op1(_op1)
     {}
 
-    ArmISA::PCState branchTarget(const ArmISA::PCState &branchPC) const;
+    ArmISA::PCState branchTarget(
+            const ArmISA::PCState &branchPC) const override;
 
     /// Explicitly import the otherwise hidden branchTarget
     using StaticInst::branchTarget;
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 }

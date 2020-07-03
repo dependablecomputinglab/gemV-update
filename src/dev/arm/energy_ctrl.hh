@@ -33,10 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Vasileios Spiliopoulos
- *          Akash Bagdia
- *          Stephan Diestelhorst
  */
 
 /**
@@ -182,6 +178,6 @@ class EnergyCtrl : public BasicPioDevice
         perfLevelAck = 1;
     }
 
-    EventWrapper<EnergyCtrl, &EnergyCtrl::updatePLAck> updateAckEvent;
+    EventFunctionWrapper updateAckEvent;
 };
 #endif //__DEV_ARM_ENERGY_CTRL_HH__

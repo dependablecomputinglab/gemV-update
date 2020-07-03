@@ -36,18 +36,18 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #include "arch/x86/faults.hh"
 
 #include "arch/x86/generated/decoder.hh"
 #include "arch/x86/isa_traits.hh"
+#include "base/loader/symtab.hh"
 #include "base/trace.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Faults.hh"
 #include "sim/full_system.hh"
+#include "sim/process.hh"
 
 namespace X86ISA
 {
@@ -152,7 +152,7 @@ namespace X86ISA
             } else {
                 tc->setMiscReg(MISCREG_CR2, (uint32_t)addr);
             }
-        } else {
+        } else if (!tc->getProcessPtr()->fixupFault(addr)) {
             PageFaultErrorCode code = errorCode;
             const char *modeStr = "";
             if (code.fetch)
@@ -161,7 +161,16 @@ namespace X86ISA
                 modeStr = "write";
             else
                 modeStr = "read";
-            panic("Tried to %s unmapped address %#x.\n", modeStr, addr);
+
+            // print information about what we are panic'ing on
+            if (!inst) {
+                panic("Tried to %s unmapped address %#x.\n", modeStr, addr);
+            } else {
+                panic("Tried to %s unmapped address %#x.\nPC: %#x, Instr: %s",
+                      modeStr, addr, tc->pcState().pc(),
+                      inst->disassemble(tc->pcState().pc(),
+                          Loader::debugSymbolTable));
+            }
         }
     }
 

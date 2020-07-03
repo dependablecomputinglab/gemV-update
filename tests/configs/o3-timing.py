@@ -35,14 +35,12 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Hansson
 
 from m5.objects import *
 from m5.defines import buildEnv
 from base_config import *
 from arm_generic import *
-from common.O3_ARM_v7a import O3_ARM_v7a_3
+from common.cores.arm.O3_ARM_v7a import O3_ARM_v7a_3
 
 # If we are running ARM regressions, use a more sensible CPU
 # configuration. This makes the results more meaningful, and also

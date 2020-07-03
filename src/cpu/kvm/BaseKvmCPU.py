@@ -32,25 +32,23 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Andreas Sandberg
 
+from m5.SimObject import *
 from m5.params import *
 from m5.proxy import *
 
-from BaseCPU import BaseCPU
-from KvmVM import KvmVM
+from m5.objects.BaseCPU import BaseCPU
+from m5.objects.KvmVM import KvmVM
 
 class BaseKvmCPU(BaseCPU):
     type = 'BaseKvmCPU'
     cxx_header = "cpu/kvm/base.hh"
     abstract = True
 
-    @classmethod
-    def export_methods(cls, code):
-        code('''
-      void dump() const;
-''')
+    @cxxMethod
+    def dump(self):
+        """Dump the internal state of KVM to standard out."""
+        pass
 
     @classmethod
     def memory_mode(cls):

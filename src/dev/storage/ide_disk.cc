@@ -36,9 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Schultz
- *          Ali Saidi
  */
 
 /** @file
@@ -56,21 +53,22 @@
 #include "base/chunk_generator.hh"
 #include "base/cprintf.hh" // csprintf
 #include "base/trace.hh"
-#include "config/the_isa.hh"
 #include "debug/IdeDisk.hh"
 #include "dev/storage/disk_image.hh"
 #include "dev/storage/ide_ctrl.hh"
 #include "sim/core.hh"
 #include "sim/sim_object.hh"
 
-using namespace std;
-using namespace TheISA;
-
 IdeDisk::IdeDisk(const Params *p)
     : SimObject(p), ctrl(NULL), image(p->image), diskDelay(p->delay),
-      dmaTransferEvent(this), dmaReadCG(NULL), dmaReadWaitEvent(this),
-      dmaWriteCG(NULL), dmaWriteWaitEvent(this), dmaPrdReadEvent(this),
-      dmaReadEvent(this), dmaWriteEvent(this)
+      dmaTransferEvent([this]{ doDmaTransfer(); }, name()),
+      dmaReadCG(NULL),
+      dmaReadWaitEvent([this]{ doDmaRead(); }, name()),
+      dmaWriteCG(NULL),
+      dmaWriteWaitEvent([this]{ doDmaWrite(); }, name()),
+      dmaPrdReadEvent([this]{ dmaPrdReadDone(); }, name()),
+      dmaReadEvent([this]{ dmaReadDone(); }, name()),
+      dmaWriteEvent([this]{ dmaWriteDone(); }, name())
 {
     // Reset the device state
     reset(p->driveID);
@@ -438,7 +436,7 @@ IdeDisk::doDmaRead()
         // clear out the data buffer
         memset(dataBuffer, 0, MAX_DMA_SIZE);
         dmaReadCG = new ChunkGenerator(curPrd.getBaseAddr(),
-                curPrd.getByteCount(), TheISA::PageBytes);
+                curPrd.getByteCount(), pageBytes);
 
     }
     if (ctrl->dmaPending() || ctrl->drainState() != DrainState::Running) {
@@ -450,7 +448,7 @@ IdeDisk::doDmaRead()
                 &dmaReadWaitEvent, dataBuffer + dmaReadCG->complete());
         dmaReadBytes += dmaReadCG->size();
         dmaReadTxs++;
-        if (dmaReadCG->size() == TheISA::PageBytes)
+        if (dmaReadCG->size() == pageBytes)
             dmaReadFullPages++;
         dmaReadCG->next();
     } else {
@@ -521,7 +519,7 @@ IdeDisk::doDmaWrite()
     if (!dmaWriteCG) {
         // clear out the data buffer
         dmaWriteCG = new ChunkGenerator(curPrd.getBaseAddr(),
-                curPrd.getByteCount(), TheISA::PageBytes);
+                curPrd.getByteCount(), pageBytes);
     }
     if (ctrl->dmaPending() || ctrl->drainState() != DrainState::Running) {
         schedule(dmaWriteWaitEvent, curTick() + DMA_BACKOFF_PERIOD);
@@ -535,7 +533,7 @@ IdeDisk::doDmaWrite()
                 curPrd.getByteCount(), curPrd.getEOT());
         dmaWriteBytes += dmaWriteCG->size();
         dmaWriteTxs++;
-        if (dmaWriteCG->size() == TheISA::PageBytes)
+        if (dmaWriteCG->size() == pageBytes)
             dmaWriteFullPages++;
         dmaWriteCG->next();
     } else {
@@ -657,6 +655,7 @@ IdeDisk::startCommand()
 
         // Supported PIO data-in commands
       case WDCC_IDENTIFY:
+      case ATAPI_IDENTIFY_DEVICE:
         cmdBytes = cmdBytesLeft = sizeof(struct ataparams);
         devState = Prepare_Data_In;
         action = ACT_DATA_READY;
@@ -699,6 +698,7 @@ IdeDisk::startCommand()
         // Supported DMA commands
       case WDCC_WRITEDMA:
         dmaRead = true;  // a write to the disk is a DMA read from memory
+        M5_FALLTHROUGH;
       case WDCC_READDMA:
         if (!(cmdReg.drive & DRIVE_LBA_BIT))
             panic("Attempt to perform CHS access, only supports LBA\n");
@@ -852,7 +852,8 @@ IdeDisk::updateState(DevAction_t action)
             status |= STATUS_DRQ_BIT;
 
             // copy the data into the data buffer
-            if (cmdReg.command == WDCC_IDENTIFY) {
+            if (cmdReg.command == WDCC_IDENTIFY ||
+                cmdReg.command == ATAPI_IDENTIFY_DEVICE) {
                 // Reset the drqBytes for this block
                 drqBytesLeft = sizeof(struct ataparams);
 

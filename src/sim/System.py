@@ -1,3 +1,15 @@
+# Copyright (c) 2017, 2019 ARM Limited
+# All rights reserved.
+#
+# The license below extends only to copyright in the software and shall
+# not be construed as granting a license to any other intellectual
+# property including but not limited to intellectual property relating
+# to a hardware implementation of the functionality of the software
+# licensed hereunder.  You may use the software subject to the license
+# terms below provided that you ensure that this notice is replicated
+# unmodified and in its entirety in all distributions of the software,
+# modified or unmodified, in source code or in binary form.
+#
 # Copyright (c) 2005-2007 The Regents of The University of Michigan
 # Copyright (c) 2011 Regents of the University of California
 # All rights reserved.
@@ -24,32 +36,27 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Nathan Binkert
-#          Rick Strong
 
-from m5.SimObject import SimObject
+from m5.SimObject import *
 from m5.defines import buildEnv
 from m5.params import *
 from m5.proxy import *
 
-from DVFSHandler import *
-from SimpleMemory import *
+from m5.objects.DVFSHandler import *
+from m5.objects.SimpleMemory import *
 
 class MemoryMode(Enum): vals = ['invalid', 'atomic', 'timing',
                                 'atomic_noncaching']
 
-class System(MemObject):
+class System(SimObject):
     type = 'System'
     cxx_header = "sim/system.hh"
     system_port = MasterPort("System port")
 
-    @classmethod
-    def export_methods(cls, code):
-        code('''
-      Enums::MemoryMode getMemoryMode() const;
-      void setMemoryMode(Enums::MemoryMode mode);
-''')
+    cxx_exports = [
+        PyBindMethod("getMemoryMode"),
+        PyBindMethod("setMemoryMode"),
+    ]
 
     memories = VectorParam.AbstractMemory(Self.all,
                                           "All memories in the system")
@@ -73,6 +80,8 @@ class System(MemObject):
 
     cache_line_size = Param.Unsigned(64, "Cache line size in bytes")
 
+    redirect_paths = VectorParam.RedirectPath([], "Path redirections")
+
     exit_on_work_items = Param.Bool(False, "Exit from the simulation loop when "
                                     "encountering work item annotations.")
     work_item_id = Param.Int(-1, "specific work item id")
@@ -90,16 +99,10 @@ class System(MemObject):
     work_cpus_ckpt_count = Param.Counter(0,
         "create checkpoint when active cpu count value is reached")
 
+    workload = Param.Workload(NULL, "Operating system kernel")
     init_param = Param.UInt64(0, "numerical value to pass into simulator")
-    boot_osflags = Param.String("a", "boot flags to pass to the kernel")
-    kernel = Param.String("", "file that contains the kernel code")
-    kernel_addr_check = Param.Bool(True,
-        "whether to address check on kernel (disable for baremetal)")
     readfile = Param.String("", "file to read startup script from")
     symbolfile = Param.String("", "file to get the symbols from")
-    load_addr_mask = Param.UInt64(0xffffffffff,
-            "Address to mask loading binaries with")
-    load_offset = Param.UInt64(0, "Address to offset loading binaries with")
 
     multi_thread = Param.Bool(False,
             "Supports multi-threaded CPUs? Impacts Thread/Context IDs")
@@ -107,6 +110,13 @@ class System(MemObject):
     # Dynamic voltage and frequency handler for the system, disabled by default
     # Provide list of domains that need to be controlled by the handler
     dvfs_handler = DVFSHandler()
+
+    # SE mode doesn't use the ISA System subclasses, and so we need to set an
+    # ISA specific value in this class directly.
+    m5ops_base = Param.Addr(
+        0xffff0000 if buildEnv['TARGET_ISA'] == 'x86' else 0,
+        "Base of the 64KiB PA range used for memory-mapped m5ops. Set to 0 "
+        "to disable.")
 
     if buildEnv['USE_KVM']:
         kvm_vm = Param.KvmVM(NULL, 'KVM VM (i.e., shared memory domain)')

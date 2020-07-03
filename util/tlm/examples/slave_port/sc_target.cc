@@ -28,8 +28,6 @@
  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Matthias Jung
  */
 
 #include "sc_target.hh"
@@ -66,6 +64,14 @@ Target::Target(sc_core::sc_module_name name,
 }
 
 void
+Target::check_address(unsigned long long int addr)
+{
+    if (addr < offset || addr >= offset + size)
+        SC_REPORT_FATAL("Target", "Address out of range. Did you set an "
+                                  "appropriate size and offset?");
+}
+
+void
 Target::b_transport(tlm::tlm_generic_payload& trans, sc_time& delay)
 {
     /* Execute the read or write commands */
@@ -75,6 +81,8 @@ Target::b_transport(tlm::tlm_generic_payload& trans, sc_time& delay)
 unsigned int
 Target::transport_dbg(tlm::tlm_generic_payload& trans)
 {
+    check_address(trans.get_address());
+
     tlm::tlm_command cmd = trans.get_command();
     sc_dt::uint64    adr = trans.get_address() - offset;
     unsigned char*   ptr = trans.get_data_ptr();
@@ -203,6 +211,8 @@ Target::execute_transaction_process()
 void
 Target::execute_transaction(tlm::tlm_generic_payload& trans)
 {
+    check_address(trans.get_address());
+
     tlm::tlm_command cmd = trans.get_command();
     sc_dt::uint64    adr = trans.get_address() - offset;
     unsigned char*   ptr = trans.get_data_ptr();

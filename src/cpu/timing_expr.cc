@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andrew Bardsley
  */
 
 #include "cpu/timing_expr.hh"
@@ -58,7 +56,7 @@ TimingExprEvalContext::TimingExprEvalContext(const StaticInstPtr &inst_,
 
 uint64_t TimingExprSrcReg::eval(TimingExprEvalContext &context)
 {
-    return context.inst->srcRegIdx(index);
+    return context.inst->srcRegIdx(index).index();
 }
 
 uint64_t TimingExprReadIntReg::eval(TimingExprEvalContext &context)

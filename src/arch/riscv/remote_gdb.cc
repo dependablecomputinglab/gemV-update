@@ -2,6 +2,7 @@
  * Copyright 2015 LabWare
  * Copyright 2014 Google, Inc.
  * Copyright (c) 2010 ARM Limited
+ * Copyright (c) 2020 Barkhausen Institut
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -39,12 +40,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          William Wang
- *          Deyuan Guo
- *          Boris Shingarov
- *          Alec Roelke
  */
 
 /*
@@ -139,7 +134,9 @@
 
 #include <string>
 
+#include "arch/riscv/pagetable_walker.hh"
 #include "arch/riscv/registers.hh"
+#include "arch/riscv/tlb.hh"
 #include "cpu/thread_state.hh"
 #include "debug/GDBAcc.hh"
 #include "mem/page_table.hh"
@@ -148,19 +145,34 @@
 using namespace std;
 using namespace RiscvISA;
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc)
-    : BaseRemoteGDB(_system, tc)
+RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc, int _port)
+    : BaseRemoteGDB(_system, tc, _port), regCache(this)
 {
 }
 
 bool
 RemoteGDB::acc(Addr va, size_t len)
 {
-    TlbEntry entry;
     if (FullSystem)
-        panic("acc not implemented for RISCV FS!");
-    else
-        return context->getProcessPtr()->pTable->lookup(va, entry);
+    {
+        TLB *tlb = dynamic_cast<TLB *>(context()->getDTBPtr());
+        unsigned logBytes;
+        Addr paddr = va;
+
+        PrivilegeMode pmode = tlb->getMemPriv(context(), BaseTLB::Read);
+        SATP satp = context()->readMiscReg(MISCREG_SATP);
+        if (pmode != PrivilegeMode::PRV_M &&
+            satp.mode != AddrXlateMode::BARE) {
+            Walker *walker = tlb->getWalker();
+            Fault fault = walker->startFunctional(
+                    context(), paddr, logBytes, BaseTLB::Read);
+            if (fault != NoFault)
+                return false;
+        }
+        return true;
+    }
+
+    return context()->getProcessPtr()->pTable->lookup(va) != nullptr;
 }
 
 void
@@ -170,15 +182,6 @@ RemoteGDB::RiscvGdbRegCache::getRegs(ThreadContext *context)
     for (int i = 0; i < NumIntArchRegs; i++)
         r.gpr[i] = context->readIntReg(i);
     r.pc = context->pcState().pc();
-    for (int i = 0; i < NumFloatRegs; i++)
-        r.fpr[i] = context->readFloatRegBits(i);
-
-    r.csr_base = context->readMiscReg(0);
-    r.fflags = context->readMiscReg(MISCREG_FFLAGS);
-    r.frm = context->readMiscReg(MISCREG_FRM);
-    r.fcsr = context->readMiscReg(MISCREG_FCSR);
-    for (int i = ExplicitCSRs; i < NumMiscRegs; i++)
-        r.csr[i - ExplicitCSRs] = context->readMiscReg(i);
 }
 
 void
@@ -188,18 +191,10 @@ RemoteGDB::RiscvGdbRegCache::setRegs(ThreadContext *context) const
     for (int i = 0; i < NumIntArchRegs; i++)
         context->setIntReg(i, r.gpr[i]);
     context->pcState(r.pc);
-    for (int i = 0; i < NumFloatRegs; i++)
-        context->setFloatRegBits(i, r.fpr[i]);
-
-    context->setMiscReg(0, r.csr_base);
-    context->setMiscReg(MISCREG_FFLAGS, r.fflags);
-    context->setMiscReg(MISCREG_FRM, r.frm);
-    context->setMiscReg(MISCREG_FCSR, r.fcsr);
-    for (int i = ExplicitCSRs; i < NumMiscRegs; i++)
-        context->setMiscReg(i, r.csr[i - ExplicitCSRs]);
 }
 
-RemoteGDB::BaseGdbRegCache*
-RemoteGDB::gdbRegs() {
-    return new RiscvGdbRegCache(this);
+BaseGdbRegCache*
+RemoteGDB::gdbRegs()
+{
+    return &regCache;
 }

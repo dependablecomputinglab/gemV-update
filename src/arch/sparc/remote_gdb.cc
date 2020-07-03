@@ -26,9 +26,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Boris Shingarov
  */
 
 /*
@@ -127,7 +124,6 @@
 #include <csignal>
 #include <string>
 
-#include "arch/vtophys.hh"
 #include "base/intmath.hh"
 #include "base/remote_gdb.hh"
 #include "base/socket.hh"
@@ -147,8 +143,8 @@
 using namespace std;
 using namespace SparcISA;
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *c)
-    : BaseRemoteGDB(_system, c)
+RemoteGDB::RemoteGDB(System *_system, ThreadContext *c, int _port)
+    : BaseRemoteGDB(_system, c, _port), regCache32(this), regCache64(this)
 {}
 
 ///////////////////////////////////////////////////////////
@@ -163,16 +159,11 @@ RemoteGDB::acc(Addr va, size_t len)
     // from va to va + len have valid page map entries. Not
     // sure how this will work for other OSes or in general.
     if (FullSystem) {
-        if (va)
-            return true;
-        return false;
+        return va != 0;
     } else {
-        TlbEntry entry;
         // Check to make sure the first byte is mapped into the processes
         // address space.
-        if (context->getProcessPtr()->pTable->lookup(va, entry))
-            return true;
-        return false;
+        return context()->getProcessPtr()->pTable->lookup(va) != nullptr;
     }
 }
 
@@ -184,11 +175,11 @@ RemoteGDB::SPARCGdbRegCache::getRegs(ThreadContext *context)
     PCState pc = context->pcState();
     r.pc = htobe((uint32_t)pc.pc());
     r.npc = htobe((uint32_t)pc.npc());
-    r.y = htobe((uint32_t)context->readIntReg(NumIntArchRegs + 1));
+    r.y = htobe((uint32_t)context->readIntReg(INTREG_Y));
     PSTATE pstate = context->readMiscReg(MISCREG_PSTATE);
     r.psr = htobe((uint32_t)pstate);
     r.fsr = htobe((uint32_t)context->readMiscReg(MISCREG_FSR));
-    r.csr = htobe((uint32_t)context->readIntReg(NumIntArchRegs + 2));
+    r.csr = htobe((uint32_t)context->readIntReg(INTREG_CCR));
 }
 
 void
@@ -202,13 +193,13 @@ RemoteGDB::SPARC64GdbRegCache::getRegs(ThreadContext *context)
     r.npc = htobe(pc.npc());
     r.fsr = htobe(context->readMiscReg(MISCREG_FSR));
     r.fprs = htobe(context->readMiscReg(MISCREG_FPRS));
-    r.y = htobe(context->readIntReg(NumIntArchRegs + 1));
+    r.y = htobe(context->readIntReg(INTREG_Y));
     PSTATE pstate = context->readMiscReg(MISCREG_PSTATE);
     r.state = htobe(
         context->readMiscReg(MISCREG_CWP) |
         pstate << 8 |
         context->readMiscReg(MISCREG_ASI) << 24 |
-        context->readIntReg(NumIntArchRegs + 2) << 32);
+        context->readIntReg(INTREG_CCR) << 32);
 }
 
 void
@@ -244,14 +235,13 @@ RemoteGDB::SPARC64GdbRegCache::setRegs(ThreadContext *context) const
 }
 
 
-RemoteGDB::BaseGdbRegCache*
+BaseGdbRegCache*
 RemoteGDB::gdbRegs()
 {
-    PSTATE pstate = context->readMiscReg(MISCREG_PSTATE);
-    if (pstate.am)
-    {DPRINTF(GDBRead, "Creating 32-bit GDB\n");
-        return new SPARCGdbRegCache(this);}
-    else
-    {DPRINTF(GDBRead, "Creating 64-bit GDB\n");
-        return new SPARC64GdbRegCache(this);}
+    PSTATE pstate = context()->readMiscReg(MISCREG_PSTATE);
+    if (pstate.am) {
+        return &regCache32;
+    } else {
+        return &regCache64;
+    }
 }

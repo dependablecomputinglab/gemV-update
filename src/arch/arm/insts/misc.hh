@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2012-2013 ARM Limited
+ * Copyright (c) 2010, 2012-2013, 2017-2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __ARCH_ARM_INSTS_MISC_HH__
@@ -52,7 +50,8 @@ class MrsOp : public PredOp
         PredOp(mnem, _machInst, __opClass), dest(_dest)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class MsrBase : public PredOp
@@ -78,7 +77,8 @@ class MsrImmOp : public MsrBase
         MsrBase(mnem, _machInst, __opClass, _byteMask), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class MsrRegOp : public MsrBase
@@ -91,7 +91,8 @@ class MsrRegOp : public MsrBase
         MsrBase(mnem, _machInst, __opClass, _byteMask), op1(_op1)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class MrrcOp : public PredOp
@@ -109,7 +110,8 @@ class MrrcOp : public PredOp
         dest2(_dest2), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class McrrOp : public PredOp
@@ -127,7 +129,8 @@ class McrrOp : public PredOp
         dest(_dest), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class ImmOp : public PredOp
@@ -140,7 +143,8 @@ class ImmOp : public PredOp
         PredOp(mnem, _machInst, __opClass), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegImmOp : public PredOp
@@ -154,7 +158,8 @@ class RegImmOp : public PredOp
         PredOp(mnem, _machInst, __opClass), dest(_dest), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegOp : public PredOp
@@ -168,7 +173,22 @@ class RegRegOp : public PredOp
         PredOp(mnem, _machInst, __opClass), dest(_dest), op1(_op1)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+};
+
+class RegOp : public PredOp
+{
+  protected:
+    IntRegIndex dest;
+
+    RegOp(const char *mnem, ExtMachInst _machInst, OpClass __opClass,
+             IntRegIndex _dest) :
+        PredOp(mnem, _machInst, __opClass), dest(_dest)
+    {}
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegImmRegOp : public PredOp
@@ -184,7 +204,8 @@ class RegImmRegOp : public PredOp
         dest(_dest), imm(_imm), op1(_op1)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegRegImmOp : public PredOp
@@ -202,7 +223,8 @@ class RegRegRegImmOp : public PredOp
         dest(_dest), op1(_op1), op2(_op2), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegRegRegOp : public PredOp
@@ -220,7 +242,8 @@ class RegRegRegRegOp : public PredOp
         dest(_dest), op1(_op1), op2(_op2), op3(_op3)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegRegOp : public PredOp
@@ -236,7 +259,8 @@ class RegRegRegOp : public PredOp
         dest(_dest), op1(_op1), op2(_op2)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegImmOp : public PredOp
@@ -253,7 +277,8 @@ class RegRegImmOp : public PredOp
         dest(_dest), op1(_op1), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class MiscRegRegImmOp : public PredOp
@@ -270,7 +295,8 @@ class MiscRegRegImmOp : public PredOp
         dest(_dest), op1(_op1), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegMiscRegImmOp : public PredOp
@@ -287,7 +313,8 @@ class RegMiscRegImmOp : public PredOp
         dest(_dest), op1(_op1), imm(_imm)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegImmImmOp : public PredOp
@@ -303,7 +330,8 @@ class RegImmImmOp : public PredOp
         dest(_dest), imm1(_imm1), imm2(_imm2)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegRegImmImmOp : public PredOp
@@ -321,7 +349,8 @@ class RegRegImmImmOp : public PredOp
         dest(_dest), op1(_op1), imm1(_imm1), imm2(_imm2)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class RegImmRegShiftOp : public PredOp
@@ -341,7 +370,8 @@ class RegImmRegShiftOp : public PredOp
         shiftAmt(_shiftAmt), shiftType(_shiftType)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
 };
 
 class UnknownOp : public PredOp
@@ -352,7 +382,50 @@ class UnknownOp : public PredOp
         PredOp(mnem, _machInst, __opClass)
     {}
 
-    std::string generateDisassembly(Addr pc, const SymbolTable *symtab) const;
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+};
+
+/**
+ * Certain mrc/mcr instructions act as nops or flush the pipe based on what
+ * register the instruction is trying to access. This inst/class exists so that
+ * we can still check for hyp traps, as the normal nop instruction
+ * does not.
+ */
+class McrMrcMiscInst : public ArmStaticInst
+{
+  protected:
+    uint64_t iss;
+    MiscRegIndex miscReg;
+
+  public:
+    McrMrcMiscInst(const char *_mnemonic, ExtMachInst _machInst,
+                   uint64_t _iss, MiscRegIndex _miscReg);
+
+    Fault execute(ExecContext *xc,
+                  Trace::InstRecord *traceData) const override;
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+
+};
+
+/**
+ * This class is also used for IMPLEMENTATION DEFINED registers, whose mcr/mrc
+ * behaviour is trappable even for unimplemented registers.
+ */
+class McrMrcImplDefined : public McrMrcMiscInst
+{
+  public:
+    McrMrcImplDefined(const char *_mnemonic, ExtMachInst _machInst,
+                      uint64_t _iss, MiscRegIndex _miscReg);
+
+    Fault execute(ExecContext *xc,
+                  Trace::InstRecord *traceData) const override;
+
+    std::string generateDisassembly(
+            Addr pc, const Loader::SymbolTable *symtab) const override;
+
 };
 
 #endif

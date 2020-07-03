@@ -23,8 +23,9 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Tushar Krishna
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import math
 import m5
@@ -34,7 +35,7 @@ from m5.util import addToPath, fatal
 
 def define_options(parser):
     # By default, ruby uses the simple timing cpu
-    parser.set_defaults(cpu_type="timing")
+    parser.set_defaults(cpu_type="TimingSimpleCPU")
 
     parser.add_option("--topology", type="string", default="Crossbar",
                       help="check configs/topologies for complete set")

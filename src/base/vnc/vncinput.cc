@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010, 2015 ARM Limited
+ * Copyright (c) 2010, 2015, 2017 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,9 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          William Wang
  */
 
 /** @file
@@ -46,8 +43,9 @@
 
 #include <sys/types.h>
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/output.hh"
+
 #include "base/trace.hh"
 #include "debug/VNC.hh"
 
@@ -58,7 +56,8 @@ VncInput::VncInput(const Params *p)
       fb(&FrameBuffer::dummy),
       _videoWidth(fb->width()), _videoHeight(fb->height()),
       captureEnabled(p->frame_capture),
-      captureCurrentFrame(0), captureLastHash(0)
+      captureCurrentFrame(0), captureLastHash(0),
+      imgFormat(p->img_format)
 {
     if (captureEnabled) {
         // remove existing frame output directory if it exists, then create a
@@ -78,9 +77,11 @@ VncInput::setFrameBuffer(const FrameBuffer *rfb)
 
     fb = rfb;
 
-    // create bitmap of the frame with new attributes
-    if (captureEnabled)
-        captureBitmap.reset(new Bitmap(rfb));
+    // Create the Image Writer object in charge of dumping
+    // the frame buffer raw data into a file in a specific format.
+    if (captureEnabled) {
+        captureImage = createImgWriter(imgFormat, rfb);
+    }
 
     // Setting a new frame buffer means that we need to send an update
     // to the client. Mark the internal buffers as dirty to do so.
@@ -110,7 +111,7 @@ VncInput::setDirty()
 void
 VncInput::captureFrameBuffer()
 {
-    assert(captureBitmap);
+    assert(captureImage);
 
     // skip identical frames
     uint64_t new_hash = fb->getHash();
@@ -120,13 +121,14 @@ VncInput::captureFrameBuffer()
 
     // get the filename for the current frame
     char frameFilenameBuffer[64];
-    snprintf(frameFilenameBuffer, 64, "fb.%06d.%lld.bmp.gz",
-            captureCurrentFrame, static_cast<long long int>(curTick()));
+    snprintf(frameFilenameBuffer, 64, "fb.%06d.%lld.%s.gz",
+            captureCurrentFrame, static_cast<long long int>(curTick()),
+            captureImage->getImgExtension());
     const string frameFilename(frameFilenameBuffer);
 
     // create the compressed framebuffer file
     OutputStream *fb_out(captureOutputDirectory->create(frameFilename, true));
-    captureBitmap->write(*fb_out->stream());
+    captureImage->write(*fb_out->stream());
     captureOutputDirectory->close(fb_out);
 
     ++captureCurrentFrame;

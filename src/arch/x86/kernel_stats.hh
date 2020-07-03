@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __ARCH_X86_KERNELSTATS_HH__
@@ -45,24 +43,10 @@
 namespace X86ISA {
 namespace Kernel {
 
-enum cpu_mode {
-    ring0,
-    ring1,
-    ring2,
-    ring3,
-    kernel = ring0,
-    user = ring3,
-    idle,
-    //What is this next one for?
-    cpu_mode_num
-};
-
-extern const char *modestr[];
-
 class Statistics : public ::Kernel::Statistics
 {
   public:
-    Statistics(System * system) : ::Kernel::Statistics(system)
+    Statistics() : ::Kernel::Statistics()
     {}
 };
 

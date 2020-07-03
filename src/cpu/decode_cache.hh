@@ -24,8 +24,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Gabe Black
  */
 
 #ifndef __CPU_DECODE_CACHE_HH__
@@ -47,7 +45,8 @@ namespace DecodeCache
 {
 
 /// Hash for decoded instructions.
-typedef std::unordered_map<TheISA::ExtMachInst, StaticInstPtr> InstMap;
+template <typename EMI>
+using InstMap = std::unordered_map<EMI, StaticInstPtr>;
 
 /// A sparse map from an Addr to a Value, stored in page chunks.
 template<class Value>

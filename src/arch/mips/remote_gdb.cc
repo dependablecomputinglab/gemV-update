@@ -38,11 +38,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          William Wang
- *          Deyuan Guo
- *          Boris Shingarov
  */
 
 /*
@@ -141,7 +136,6 @@
 #include <string>
 
 #include "arch/mips/decoder.hh"
-#include "arch/mips/vtophys.hh"
 #include "cpu/thread_state.hh"
 #include "debug/GDBAcc.hh"
 #include "debug/GDBMisc.hh"
@@ -151,8 +145,8 @@
 using namespace std;
 using namespace MipsISA;
 
-RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc)
-    : BaseRemoteGDB(_system, tc)
+RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc, int _port)
+    : BaseRemoteGDB(_system, tc, _port), regCache(this)
 {
 }
 
@@ -162,13 +156,10 @@ RemoteGDB::RemoteGDB(System *_system, ThreadContext *tc)
 bool
 RemoteGDB::acc(Addr va, size_t len)
 {
-    TlbEntry entry;
-    //Check to make sure the first byte is mapped into the processes address
-    //space.
-    if (FullSystem)
-        panic("acc not implemented for MIPS FS!");
-    else
-        return context->getProcessPtr()->pTable->lookup(va, entry);
+    // Check to make sure the first byte is mapped into the processes address
+    // space.
+    panic_if(FullSystem, "acc not implemented for MIPS FS!");
+    return context()->getProcessPtr()->pTable->lookup(va) != nullptr;
 }
 
 void
@@ -183,9 +174,9 @@ RemoteGDB::MipsGdbRegCache::getRegs(ThreadContext *context)
     r.badvaddr = context->readMiscRegNoEffect(MISCREG_BADVADDR);
     r.cause = context->readMiscRegNoEffect(MISCREG_CAUSE);
     r.pc = context->pcState().pc();
-    for (int i = 0; i < 32; i++) r.fpr[i] = context->readFloatRegBits(i);
-    r.fsr = context->readFloatRegBits(FLOATREG_FCCR);
-    r.fir = context->readFloatRegBits(FLOATREG_FIR);
+    for (int i = 0; i < 32; i++) r.fpr[i] = context->readFloatReg(i);
+    r.fsr = context->readFloatReg(FLOATREG_FCCR);
+    r.fir = context->readFloatReg(FLOATREG_FIR);
 }
 
 void
@@ -200,12 +191,13 @@ RemoteGDB::MipsGdbRegCache::setRegs(ThreadContext *context) const
     context->setMiscRegNoEffect(MISCREG_BADVADDR, r.badvaddr);
     context->setMiscRegNoEffect(MISCREG_CAUSE, r.cause);
     context->pcState(r.pc);
-    for (int i = 0; i < 32; i++) context->setFloatRegBits(i, r.fpr[i]);
-    context->setFloatRegBits(FLOATREG_FCCR, r.fsr);
-    context->setFloatRegBits(FLOATREG_FIR, r.fir);
+    for (int i = 0; i < 32; i++) context->setFloatReg(i, r.fpr[i]);
+    context->setFloatReg(FLOATREG_FCCR, r.fsr);
+    context->setFloatReg(FLOATREG_FIR, r.fir);
 }
 
-RemoteGDB::BaseGdbRegCache*
-RemoteGDB::gdbRegs() {
-    return new MipsGdbRegCache(this);
+BaseGdbRegCache*
+RemoteGDB::gdbRegs()
+{
+    return &regCache;
 }

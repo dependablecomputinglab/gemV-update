@@ -26,10 +26,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Timothy M. Jones
- *          Gabe Black
- *          Stephen Hines
  */
 
 #ifndef __ARCH_POWER_ISA_TRAITS_HH__
@@ -39,17 +35,12 @@
 #include "base/types.hh"
 #include "cpu/static_inst_fwd.hh"
 
-namespace BigEndianGuest {}
-
 namespace PowerISA
 {
 
-using namespace BigEndianGuest;
+const ByteOrder GuestByteOrder = BigEndianByteOrder;
 
 StaticInstPtr decodeInst(ExtMachInst);
-
-// POWER DOES NOT have a delay slot
-#define ISA_HAS_DELAY_SLOT 0
 
 const Addr PageShift = 12;
 const Addr PageBytes = ULL(1) << PageShift;
@@ -62,9 +53,6 @@ const Addr NPtePage = ULL(1) << NPtePageShift;
 const Addr PteMask = NPtePage - 1;
 
 const int MachineBytes = 4;
-
-// This is ori 0, 0, 0
-const ExtMachInst NoopMachInst = 0x60000000;
 
 // Memory accesses can be unaligned
 const bool HasUnalignedMemAcc = true;

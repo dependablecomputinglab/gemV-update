@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Hansson
  */
 
 #include <cassert>
@@ -54,7 +52,7 @@
 
 #include "DRAMSim2/MultiChannelMemorySystem.h"
 #include "base/compiler.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 
 /**
  * DRAMSim2 requires SHOW_SIM_OUTPUT to be defined (declared extern in

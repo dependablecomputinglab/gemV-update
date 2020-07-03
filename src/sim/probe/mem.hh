@@ -33,9 +33,8 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Andreas Sandberg
  */
+
 #ifndef __SIM_PROBE_MEM_HH__
 #define __SIM_PROBE_MEM_HH__
 
@@ -57,13 +56,15 @@ struct PacketInfo {
     uint32_t size;
     Request::FlagsType flags;
     Addr pc;
+    MasterID master;
 
     explicit PacketInfo(const PacketPtr& pkt) :
         cmd(pkt->cmd),
         addr(pkt->getAddr()),
         size(pkt->getSize()),
         flags(pkt->req->getFlags()),
-        pc(pkt->req->hasPC() ? pkt->req->getPC() : 0)  { }
+        pc(pkt->req->hasPC() ? pkt->req->getPC() : 0),
+        master(pkt->req->masterId())  { }
 };
 
 /**

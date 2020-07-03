@@ -36,9 +36,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Kevin Lim
- *          Korey Sewell
  */
 
 #ifndef __CPU_O3_ROB_IMPL_HH__
@@ -46,6 +43,7 @@
 
 #include <list>
 
+#include "base/logging.hh"
 #include "cpu/o3/rob.hh"
 #include "debug/Fetch.hh"
 #include "debug/ROB.hh"
@@ -55,30 +53,22 @@ using namespace std;
 
 template <class Impl>
 ROB<Impl>::ROB(O3CPU *_cpu, DerivO3CPUParams *params)
-    : cpu(_cpu),
+    : robPolicy(params->smtROBPolicy),
+      cpu(_cpu),
       numEntries(params->numROBEntries),
       squashWidth(params->squashWidth),
       numInstsInROB(0),
       robVulCalc(params->numROBEntries, params->numThreads, sizeof(InstSeqNum)*8),                //VUL_ROB
       numThreads(params->numThreads)
 {
-    std::string policy = params->smtROBPolicy;
-
-    //Convert string to lowercase
-    std::transform(policy.begin(), policy.end(), policy.begin(),
-                   (int(*)(int)) tolower);
-
     //Figure out rob policy
-    if (policy == "dynamic") {
-        robPolicy = Dynamic;
-
+    if (robPolicy == SMTQueuePolicy::Dynamic) {
         //Set Max Entries to Total ROB Capacity
         for (ThreadID tid = 0; tid < numThreads; tid++) {
             maxEntries[tid] = numEntries;
         }
 
-    } else if (policy == "partitioned") {
-        robPolicy = Partitioned;
+    } else if (robPolicy == SMTQueuePolicy::Partitioned) {
         DPRINTF(Fetch, "ROB sharing policy set to Partitioned\n");
 
         //@todo:make work if part_amt doesnt divide evenly.
@@ -89,8 +79,7 @@ ROB<Impl>::ROB(O3CPU *_cpu, DerivO3CPUParams *params)
             maxEntries[tid] = part_amt;
         }
 
-    } else if (policy == "threshold") {
-        robPolicy = Threshold;
+    } else if (robPolicy == SMTQueuePolicy::Threshold) {
         DPRINTF(Fetch, "ROB sharing policy set to Threshold\n");
 
         int threshold =  params->smtROBThreshold;;
@@ -99,9 +88,10 @@ ROB<Impl>::ROB(O3CPU *_cpu, DerivO3CPUParams *params)
         for (ThreadID tid = 0; tid < numThreads; tid++) {
             maxEntries[tid] = threshold;
         }
-    } else {
-        assert(0 && "Invalid ROB Sharing Policy.Options Are:{Dynamic,"
-                    "Partitioned, Threshold}");
+    }
+
+    for (ThreadID tid = numThreads; tid < Impl::MaxThreads; tid++) {
+        maxEntries[tid] = 0;
     }
 
     resetState();
@@ -111,11 +101,11 @@ template <class Impl>
 void
 ROB<Impl>::resetState()
 {
-    for (ThreadID tid = 0; tid  < numThreads; tid++) {
-        doneSquashing[tid] = true;
+    for (ThreadID tid = 0; tid  < Impl::MaxThreads; tid++) {
         threadEntries[tid] = 0;
         squashIt[tid] = instList[tid].end();
         squashedSeqNum[tid] = 0;
+        doneSquashing[tid] = true;
     }
     numInstsInROB = 0;
 
@@ -160,8 +150,8 @@ template <class Impl>
 void
 ROB<Impl>::resetEntries()
 {
-    if (robPolicy != Dynamic || numThreads > 1) {
-        int active_threads = activeThreads->size();
+    if (robPolicy != SMTQueuePolicy::Dynamic || numThreads > 1) {
+        auto active_threads = activeThreads->size();
 
         list<ThreadID>::iterator threads = activeThreads->begin();
         list<ThreadID>::iterator end = activeThreads->end();
@@ -169,9 +159,10 @@ ROB<Impl>::resetEntries()
         while (threads != end) {
             ThreadID tid = *threads++;
 
-            if (robPolicy == Partitioned) {
+            if (robPolicy == SMTQueuePolicy::Partitioned) {
                 maxEntries[tid] = numEntries / active_threads;
-            } else if (robPolicy == Threshold && active_threads == 1) {
+            } else if (robPolicy == SMTQueuePolicy::Threshold &&
+                       active_threads == 1) {
                 maxEntries[tid] = numEntries;
             }
         }
@@ -182,7 +173,7 @@ template <class Impl>
 int
 ROB<Impl>::entryAmount(ThreadID num_threads)
 {
-    if (robPolicy == Partitioned) {
+    if (robPolicy == SMTQueuePolicy::Partitioned) {
         return numEntries / num_threads;
     } else {
         return 0;
@@ -202,7 +193,7 @@ ROB<Impl>::countInsts()
 }
 
 template <class Impl>
-int
+size_t
 ROB<Impl>::countInsts(ThreadID tid)
 {
     return instList[tid].size();
@@ -210,7 +201,7 @@ ROB<Impl>::countInsts(ThreadID tid)
 
 template <class Impl>
 void
-ROB<Impl>::insertInst(DynInstPtr &inst)
+ROB<Impl>::insertInst(const DynInstPtr &inst)
 {
     assert(inst);
 
@@ -257,24 +248,25 @@ ROB<Impl>::retireHead(ThreadID tid)
 
     assert(numInstsInROB > 0);
 
-    // Get the head ROB instruction.
+    // Get the head ROB instruction by copying it and remove it from the list
     InstIt head_it = instList[tid].begin();
 
-    DynInstPtr head_inst = (*head_it);
+    DynInstPtr head_inst = std::move(*head_it);
+    instList[tid].erase(head_it);
 
     assert(head_inst->readyToCommit());
 
-    DPRINTF(ROB, "[tid:%u]: Retiring head instruction, "
-            "instruction PC %s, [sn:%lli]\n", tid, head_inst->pcState(),
-            head_inst->seqNumROB);
+
+    DPRINTF(ROB, "[tid:%i] Retiring head instruction, "
+            "instruction PC %s, [sn:%llu]\n", tid, head_inst->pcState(),
+            head_inst->seqNum);
+
 
     --numInstsInROB;
     --threadEntries[tid];
 
     head_inst->clearInROB();
     head_inst->setCommitted();
-
-    instList[tid].erase(head_it);
 
     //Update "Global" Head of ROB
     updateHead();
@@ -335,13 +327,14 @@ void
 ROB<Impl>::doSquash(ThreadID tid)
 {
     robWrites++;
-    DPRINTF(ROB, "[tid:%u]: Squashing instructions until [sn:%i].\n",
+    DPRINTF(ROB, "[tid:%i] Squashing instructions until [sn:%llu].\n",
             tid, squashedSeqNum[tid]);
 
     assert(squashIt[tid] != instList[tid].end());
 
-    if ((*squashIt[tid])->seqNumROB < squashedSeqNum[tid]) {
-        DPRINTF(ROB, "[tid:%u]: Done squashing instructions.\n",
+
+    if ((*squashIt[tid])->seqNum < squashedSeqNum[tid]) {
+        DPRINTF(ROB, "[tid:%i] Done squashing instructions.\n",
                 tid);
 
         squashIt[tid] = instList[tid].end();
@@ -358,7 +351,7 @@ ROB<Impl>::doSquash(ThreadID tid)
          (*squashIt[tid])->seqNumROB > squashedSeqNum[tid];
          ++numSquashed)
     {
-        DPRINTF(ROB, "[tid:%u]: Squashing instruction PC %s, seq num %i.\n",
+        DPRINTF(ROB, "[tid:%i] Squashing instruction PC %s, seq num %i.\n",
                 (*squashIt[tid])->threadNumber,
                 (*squashIt[tid])->pcState(),
                 (*squashIt[tid])->seqNumROB);
@@ -394,8 +387,9 @@ ROB<Impl>::doSquash(ThreadID tid)
 
 
     // Check if ROB is done squashing.
-    if ((*squashIt[tid])->seqNumROB <= squashedSeqNum[tid]) {
-        DPRINTF(ROB, "[tid:%u]: Done squashing instructions.\n",
+
+    if ((*squashIt[tid])->seqNum <= squashedSeqNum[tid]) {
+        DPRINTF(ROB, "[tid:%i] Done squashing instructions.\n",
                 tid);
 
         squashIt[tid] = instList[tid].end();
@@ -495,7 +489,7 @@ ROB<Impl>::squash(InstSeqNum squash_num, ThreadID tid)
 {
     if (isEmpty(tid)) {
         DPRINTF(ROB, "Does not need to squash due to being empty "
-                "[sn:%i]\n",
+                "[sn:%llu]\n",
                 squash_num);
 
         return;
@@ -520,7 +514,7 @@ ROB<Impl>::squash(InstSeqNum squash_num, ThreadID tid)
 }
 
 template <class Impl>
-typename Impl::DynInstPtr
+const typename Impl::DynInstPtr&
 ROB<Impl>::readHeadInst(ThreadID tid)
 {
     if (threadEntries[tid] != 0) {

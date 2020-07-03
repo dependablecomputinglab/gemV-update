@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 ARM Limited
+ * Copyright (c) 2016, 2018 ARM Limited
  * All rights reserved
  *
  * The license below extends only to copyright in the software and shall
@@ -33,14 +33,13 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: David Guillen Fandos
  */
 
 #ifndef __SIM_POWER_POWER_MODEL_HH__
 #define __SIM_POWER_POWER_MODEL_HH__
 
 #include "base/statistics.hh"
+#include "enums/PMType.hh"
 #include "params/PowerModel.hh"
 #include "params/PowerModelState.hh"
 #include "sim/probe/probe.hh"
@@ -85,6 +84,8 @@ class PowerModelState : public SimObject
     }
 
     void regStats() {
+        SimObject::regStats();
+
         dynamicPower
           .method(this, &PowerModelState::getDynamicPower)
           .name(params()->name + ".dynamic_power")
@@ -109,6 +110,8 @@ class PowerModelState : public SimObject
 };
 
 /**
+ * @sa \ref gem5PowerModel "gem5 Power Model"
+ *
  * A PowerModel is a class containing a power model for a SimObject.
  * The PM describes the power consumption for every power state.
  */
@@ -134,6 +137,8 @@ class PowerModel : public SimObject
     double getStaticPower() const;
 
     void regStats() {
+        SimObject::regStats();
+
         dynamicPower
           .method(this, &PowerModel::getDynamicPower)
           .name(params()->name + ".dynamic_power")
@@ -184,6 +189,9 @@ class PowerModel : public SimObject
 
     /** The clocked object we belong to */
     ClockedObject * clocked_object;
+
+    /** The type of power model - collects all power, static or dynamic only */
+    Enums::PMType power_model_type;
 };
 
 #endif

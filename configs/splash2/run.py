@@ -23,11 +23,12 @@
 # THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# Authors: Ron Dreslinski
 
 # Splash2 Run Script
 #
+
+from __future__ import print_function
+from __future__ import absolute_import
 
 import os
 import optparse
@@ -67,11 +68,11 @@ parser.add_option("-b", "--benchmark",
 (options, args) = parser.parse_args()
 
 if args:
-    print "Error: script doesn't take any positional arguments"
+    print("Error: script doesn't take any positional arguments")
     sys.exit(1)
 
 if not options.numcpus:
-    print "Specify the number of cpus with -n"
+    print("Specify the number of cpus with -n")
     sys.exit(1)
 
 # --------------------
@@ -180,15 +181,15 @@ busFrequency = Frequency(options.frequency)
 if options.timing:
     cpus = [TimingSimpleCPU(cpu_id = i,
                             clock=options.frequency)
-            for i in xrange(options.numcpus)]
+            for i in range(options.numcpus)]
 elif options.detailed:
     cpus = [DerivO3CPU(cpu_id = i,
                        clock=options.frequency)
-            for i in xrange(options.numcpus)]
+            for i in range(options.numcpus)]
 else:
     cpus = [AtomicSimpleCPU(cpu_id = i,
                             clock=options.frequency)
-            for i in xrange(options.numcpus)]
+            for i in range(options.numcpus)]
 
 # ----------------------
 # Create a system, and add system wide objects
@@ -253,9 +254,10 @@ elif options.benchmark == 'WaterNSquared':
 elif options.benchmark == 'WaterSpatial':
     root.workload = Water_spatial()
 else:
-    print >> sys.stderr, """The --benchmark environment variable was set to something improper.
-Use Cholesky, FFT, LUContig, LUNoncontig, Radix, Barnes, FMM, OceanContig,
-OceanNoncontig, Raytrace, WaterNSquared, or WaterSpatial"""
+    print("The --benchmark environment variable was set to something "
+          "improper. Use Cholesky, FFT, LUContig, LUNoncontig, Radix, "
+          "Barnes, FMM, OceanContig, OceanNoncontig, Raytrace, WaterNSquared, "
+          "or WaterSpatial", file=sys.stderr)
     sys.exit(1)
 
 # --------------------
@@ -281,5 +283,5 @@ if options.maxtick:
 else:
     exit_event = m5.simulate(m5.MaxTick)
 
-print 'Exiting @ tick', m5.curTick(), 'because', exit_event.getCause()
+print('Exiting @ tick', m5.curTick(), 'because', exit_event.getCause())
 

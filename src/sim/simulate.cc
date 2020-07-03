@@ -26,9 +26,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Nathan Binkert
- *          Steve Reinhardt
  */
 
 #include "sim/simulate.hh"
@@ -36,7 +33,7 @@
 #include <mutex>
 #include <thread>
 
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "base/pollevent.hh"
 #include "base/types.hh"
 #include "sim/async.hh"
@@ -76,7 +73,7 @@ GlobalSimLoopExitEvent *simulate_limit_event = nullptr;
 
 /** Simulate for num_cycles additional cycles.  If num_cycles is -1
  * (the default), do not limit simulation; some other event must
- * terminate the loop.  Exported to Python via SWIG.
+ * terminate the loop.  Exported to Python.
  * @return The SimLoopExitEvent that caused the loop to exit.
  */
 GlobalSimLoopExitEvent *

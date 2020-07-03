@@ -24,17 +24,13 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Ali Saidi
- *          Andrew Schultz
- *          Miguel Serrano
  */
 
 #ifndef __DEV_MC146818_HH__
 #define __DEV_MC146818_HH__
 
 #include "base/bitunion.hh"
-#include "base/misc.hh"
+#include "base/logging.hh"
 #include "sim/eventq_impl.hh"
 
 /** Real-Time Clock (MC146818) */

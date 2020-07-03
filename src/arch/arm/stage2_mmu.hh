@@ -33,8 +33,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Authors: Thomas Grocutt
  */
 
 #ifndef __ARCH_ARM_STAGE2_MMU_HH__
@@ -70,12 +68,12 @@ class Stage2MMU : public SimObject
     class Stage2Translation : public BaseTLB::Translation
     {
       private:
-        uint8_t   *data;
-        int       numBytes;
-        Request   req;
-        Event     *event;
-        Stage2MMU &parent;
-        Addr      oVAddr;
+        uint8_t      *data;
+        int          numBytes;
+        RequestPtr   req;
+        Event        *event;
+        Stage2MMU    &parent;
+        Addr         oVAddr;
 
       public:
         Fault fault;
@@ -87,18 +85,18 @@ class Stage2MMU : public SimObject
         markDelayed() {}
 
         void
-        finish(const Fault &fault, RequestPtr req, ThreadContext *tc,
+        finish(const Fault &fault, const RequestPtr &req, ThreadContext *tc,
                BaseTLB::Mode mode);
 
         void setVirt(Addr vaddr, int size, Request::Flags flags, int masterId)
         {
             numBytes = size;
-            req.setVirt(0, vaddr, size, flags, masterId, 0);
+            req->setVirt(vaddr, size, flags, masterId, 0);
         }
 
-        Fault translateTiming(ThreadContext *tc)
+        void translateTiming(ThreadContext *tc)
         {
-            return (parent.stage2Tlb()->translateTiming(&req, tc, this, BaseTLB::Read));
+            parent.stage2Tlb()->translateTiming(req, tc, this, BaseTLB::Read);
         }
     };
 
@@ -110,13 +108,13 @@ class Stage2MMU : public SimObject
      * is used by the two table walkers, and is exposed externally and
      * connected through the stage-one table walker.
      */
-    DmaPort& getPort() { return port; }
+    DmaPort& getDMAPort() { return port; }
 
     Fault readDataUntimed(ThreadContext *tc, Addr oVAddr, Addr descAddr,
         uint8_t *data, int numBytes, Request::Flags flags, bool isFunctional);
-    Fault readDataTimed(ThreadContext *tc, Addr descAddr,
-                        Stage2Translation *translation, int numBytes,
-                        Request::Flags flags);
+    void readDataTimed(ThreadContext *tc, Addr descAddr,
+                       Stage2Translation *translation, int numBytes,
+                       Request::Flags flags);
 
     TLB* stage1Tlb() const { return _stage1Tlb; }
     TLB* stage2Tlb() const { return _stage2Tlb; }
