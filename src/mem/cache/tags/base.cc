@@ -256,8 +256,8 @@ BaseTags::BaseTagStats::regStats()
     avgOccs = occupancies / Stats::constant(tags.numBlocks);
 
     tagVul
-        //.name(name() + ".vulnerability")
-        .name("tag.vulnerability") //200630 Merging: no name
+        .name(tags.name() + ".vulnerability")
+        //.name("tag.vulnerability") //200630 Merging: no name
         .desc("Vulnerability of tag arrays in bit-ticks")
         ;
 

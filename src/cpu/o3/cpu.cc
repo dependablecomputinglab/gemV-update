@@ -581,7 +581,7 @@ template <class Impl>
 void
 FullO3CPU<Impl>::tick()
 {
-    injectFaultRegFunc();
+    //injectFaultRegFunc(); //200630 Merging
     
     DPRINTF(O3CPU, "\n\nFullO3CPU: Ticking main, FullO3CPU.\n");
     assert(!switchedOut());

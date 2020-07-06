@@ -278,12 +278,12 @@ for i in range(np):
         with open(options.vul_params) as pf:
             for line in pf.readlines():
                 line = line.strip()
-                print line
+                print (line)
 
                 if "=" in line:
                     parts = line.split("=")
-                    print parts[0]
-                    print parts[1]
+                    print (parts[0])
+                    print (parts[1])
                     
                     if parts[0] == "rob":
                         if parts[1] == "true":

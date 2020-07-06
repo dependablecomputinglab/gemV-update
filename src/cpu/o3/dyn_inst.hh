@@ -433,6 +433,8 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     void
     setIntRegOperand(const StaticInst *si, int idx, RegVal val) override
     {
+        this->cpu->setIntReg(this->_destRegIdx[idx], val); 
+        
         //VUL_TRACKER REGISTER_FILE
         //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
         if(this->cpu->rfVulEnable)
@@ -452,7 +454,8 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     void
     setFloatRegOperandBits(const StaticInst *si, int idx, RegVal val) override
     {
-
+        this->cpu->setFloatReg(this->_destRegIdx[idx], val);                                
+    
         //VUL_TRACKER REGISTER_FILE
         //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
         if(this->cpu->rfVulEnable)
@@ -475,7 +478,7 @@ class BaseO3DynInst : public BaseDynInst<Impl>
     setVecRegOperand(const StaticInst *si, int idx,
                      const VecRegContainer& val) override
     {
-
+        this->cpu->setVecReg(this->_destRegIdx[idx], val);                                  
         //VUL_TRACKER REGISTER_FILE
         //this->vulT.vulOnWrite(ST_REGFILE, RF_REGISTER, this->_destRegIdx[idx]);
         //if(this->cpu->rfVulEnable)
